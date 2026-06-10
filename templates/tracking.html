@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pipeline — Apex Job Agent</title>
+<style>
+:root{--bg:#09090f;--s1:#111320;--s2:#191d30;--s3:#202438;--acc:#6366f1;--acc2:#a5b4fc;--grn:#22c55e;--ylw:#f59e0b;--red:#ef4444;--txt:#e2e8f0;--mut:#94a3b8;--bdr:#252a45;--r:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif}
+nav{background:var(--s1);border-bottom:1px solid var(--bdr);height:60px;display:flex;align-items:center;padding:0 28px;gap:6px;position:sticky;top:0;z-index:100}
+.logo{font-weight:800;font-size:18px;background:linear-gradient(135deg,#e2e8f0,var(--acc2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-right:24px}
+nav a{color:var(--mut);text-decoration:none;padding:7px 14px;border-radius:9px;font-size:14px;transition:all .2s}
+nav a:hover,nav a.on{background:var(--s2);color:var(--txt)}
+.container{max-width:100%;padding:24px 28px}
+h1{font-size:22px;font-weight:700;margin-bottom:6px}
+.sub{color:var(--mut);font-size:14px;margin-bottom:24px}
+/* Kanban */
+.board{display:flex;gap:14px;overflow-x:auto;padding-bottom:16px;min-height:600px}
+.col{flex:0 0 240px;display:flex;flex-direction:column;gap:10px}
+.col-head{background:var(--s1);border:1px solid var(--bdr);border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+.col-name{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.col-count{background:var(--s3);color:var(--mut);border-radius:20px;padding:1px 8px;font-size:11px}
+.card{background:var(--s1);border:1px solid var(--bdr);border-radius:10px;padding:12px;cursor:pointer;transition:all .2s}
+.card:hover{border-color:var(--acc);transform:translateY(-1px)}
+.card-title{font-size:13px;font-weight:600;margin-bottom:3px}
+.card-co{font-size:12px;color:var(--mut);margin-bottom:8px}
+.card-meta{display:flex;gap:6px;align-items:center}
+.score-chip{font-size:11px;font-weight:700;padding:1px 7px;border-radius:20px}
+.sc-hi{background:#052e16;color:#86efac}.sc-mid{background:#1e3a5f;color:#93c5fd}
+.sc-lo{background:#3b2002;color:#fde68a}.sc-none{background:var(--s3);color:var(--mut)}
+.card-date{font-size:10px;color:var(--mut)}
+.empty-col{background:var(--s2);border:1px dashed var(--bdr);border-radius:10px;padding:20px;text-align:center;color:var(--mut);font-size:12px}
+/* Move stage modal */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:none;align-items:center;justify-content:center}
+.modal-bg.on{display:flex}
+.modal{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:28px;width:440px;max-width:90vw}
+.modal h3{font-size:17px;font-weight:700;margin-bottom:6px}
+.modal-sub{font-size:13px;color:var(--mut);margin-bottom:20px}
+.stage-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+.stage-btn{padding:10px 14px;border-radius:9px;border:1px solid var(--bdr);background:var(--s2);color:var(--txt);font-size:13px;cursor:pointer;transition:all .2s;text-align:left}
+.stage-btn:hover{border-color:var(--acc);color:var(--acc2)}
+.stage-btn.sel{border-color:var(--acc);background:rgba(99,102,241,.15);color:var(--acc2)}
+label{font-size:12px;color:var(--mut);display:block;margin-bottom:6px}
+textarea{background:var(--s3);border:1px solid var(--bdr);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--txt);width:100%;outline:none;font-family:inherit;resize:vertical;min-height:70px}
+textarea:focus{border-color:var(--acc)}
+.btn-row{display:flex;gap:8px;margin-top:16px}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:8px 18px;border-radius:9px;font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all .2s}
+.btn-p{background:var(--acc);color:#fff}.btn-p:hover{background:#5254cc}
+.btn-o{background:transparent;border:1px solid var(--bdr);color:var(--txt)}
+.btn-o:hover{border-color:var(--acc)}
+/* Analytics */
+.analytics{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:28px}
+.chart-card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:18px}
+.chart-title{font-size:13px;font-weight:600;margin-bottom:14px;color:var(--txt)}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.bar-lbl{font-size:12px;color:var(--mut);width:120px;flex-shrink:0;text-align:right}
+.bar-wrap{flex:1;background:var(--s3);border-radius:4px;height:10px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;background:var(--acc);transition:width .4s}
+.bar-val{font-size:12px;color:var(--mut);width:30px;text-align:right}
+.funnel-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.funnel-lbl{font-size:12px;color:var(--mut);flex:1}
+.funnel-n{font-size:20px;font-weight:700;color:var(--acc2)}
+</style>
+</head>
+<body>
+<nav>
+  <span class="logo">⚡ Apex</span>
+  <a href="/">Dashboard</a><a href="/profile">Profile</a>
+  <a href="/jobs">Jobs</a><a href="/apply">Apply</a>
+  <a href="/tracking" class="on">Pipeline</a>
+  <a href="/settings">Settings</a>
+  <a href="/settings">Settings</a>
+</nav>
+<div class="container">
+  <h1>Application Pipeline</h1>
+  <p class="sub">Track every application from submission to offer. Click a card to move its stage.</p>
+
+  <!-- Kanban board -->
+  <div class="board" id="board">
+    <div style="color:var(--mut);padding:40px">Loading...</div>
+  </div>
+
+  <!-- Analytics -->
+  <div class="analytics">
+    <div class="chart-card">
+      <div class="chart-title">Conversion Funnel</div>
+      <div id="funnel-chart"><div style="color:var(--mut);font-size:13px">Loading...</div></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Applications by Source</div>
+      <div id="source-chart"><div style="color:var(--mut);font-size:13px">Loading...</div></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">AI Score Distribution</div>
+      <div id="score-chart"><div style="color:var(--mut);font-size:13px">Loading...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Move stage modal -->
+<div class="modal-bg" id="modal-bg" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h3 id="modal-title">Move Application</h3>
+    <div class="modal-sub" id="modal-sub"></div>
+    <div class="stage-grid" id="stage-grid"></div>
+    <label>Note (optional)</label>
+    <textarea id="stage-note" placeholder="e.g. Recruiter called, first round next week"></textarea>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="saveStage()">Save</button>
+      <button class="btn btn-o" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STAGES = [
+  {key:'applied',          label:'Applied'},
+  {key:'recruiter_screen', label:'Recruiter Screen'},
+  {key:'technical_round',  label:'Technical Round'},
+  {key:'hiring_manager',   label:'Hiring Manager'},
+  {key:'offer',            label:'Offer 🎉'},
+  {key:'rejected',         label:'Rejected'},
+  {key:'withdrawn',        label:'Withdrawn'},
+];
+const COLORS = {applied:'#6366f1',recruiter_screen:'#0ea5e9',technical_round:'#8b5cf6',hiring_manager:'#f59e0b',offer:'#22c55e',rejected:'#ef4444',withdrawn:'#94a3b8'};
+
+let selectedJobId = null, selectedStage = null;
+
+async function loadBoard() {
+  const r = await fetch('/api/tracking/pipeline');
+  const data = await r.json();
+  const board = document.getElementById('board');
+  board.innerHTML = STAGES.map(s => {
+    const cards = (data[s.key] || []);
+    return `<div class="col">
+      <div class="col-head" style="border-top:3px solid ${COLORS[s.key]}">
+        <span class="col-name">${s.label}</span>
+        <span class="col-count">${cards.length}</span>
+      </div>
+      ${cards.length ? cards.map(c => `
+        <div class="card" onclick="openModal('${c.job_id}','${c.title}','${c.company}')">
+          <div class="card-title">${c.title}</div>
+          <div class="card-co">${c.company}</div>
+          <div class="card-meta">
+            ${c.ai_score!=null?`<span class="score-chip ${c.ai_score>=70?'sc-hi':c.ai_score>=50?'sc-mid':'sc-lo'}">${c.ai_score}</span>`:''}
+            <span class="card-date">${c.changed_at?.slice(0,10)||''}</span>
+          </div>
+        </div>`).join('') : '<div class="empty-col">No applications</div>'}
+    </div>`;
+  }).join('');
+}
+
+async function loadAnalytics() {
+  try {
+    const r = await fetch('/api/tracking/analytics');
+    const d = await r.json();
+
+    // Funnel
+    const maxF = Math.max(...d.funnel.map(f=>f.count), 1);
+    document.getElementById('funnel-chart').innerHTML = d.funnel.map(f => `
+      <div class="funnel-row">
+        <span class="funnel-lbl">${f.stage}</span>
+        <div class="bar-wrap" style="max-width:120px"><div class="bar-fill" style="width:${Math.round(f.count/maxF*100)}%"></div></div>
+        <span class="funnel-n">${f.count}</span>
+      </div>`).join('');
+
+    // Source
+    const maxS = Math.max(...d.sources.map(s=>s.n), 1);
+    document.getElementById('source-chart').innerHTML = d.sources.map(s => `
+      <div class="bar-row">
+        <span class="bar-lbl">${s.source}</span>
+        <div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(s.n/maxS*100)}%;background:${s.source==='linkedin'?'#0a66c2':s.source==='indeed'?'#003a9b':'var(--acc)'}"></div></div>
+        <span class="bar-val">${s.n}</span>
+      </div>`).join('') || '<div style="color:var(--mut);font-size:13px">No data yet</div>';
+
+    // Score dist
+    const maxSc = Math.max(...d.score_dist.map(s=>s.count), 1);
+    document.getElementById('score-chart').innerHTML = d.score_dist.map(s => `
+      <div class="bar-row">
+        <span class="bar-lbl">${s.range}</span>
+        <div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(s.count/maxSc*100)}%"></div></div>
+        <span class="bar-val">${s.count}</span>
+      </div>`).join('');
+  } catch(e) { console.error(e); }
+}
+
+function openModal(jobId, title, company) {
+  selectedJobId = jobId;
+  selectedStage = null;
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-sub').textContent   = company;
+  document.getElementById('stage-note').value = '';
+  document.getElementById('stage-grid').innerHTML = STAGES.map(s => `
+    <button class="stage-btn" id="sb-${s.key}" onclick="selectStage('${s.key}')">${s.label}</button>`
+  ).join('');
+  document.getElementById('modal-bg').classList.add('on');
+}
+
+function selectStage(key) {
+  selectedStage = key;
+  document.querySelectorAll('.stage-btn').forEach(b => b.classList.remove('sel'));
+  document.getElementById('sb-' + key)?.classList.add('sel');
+}
+
+function closeModal() {
+  document.getElementById('modal-bg').classList.remove('on');
+  selectedJobId = null; selectedStage = null;
+}
+
+async function saveStage() {
+  if (!selectedJobId || !selectedStage) { alert('Select a stage first'); return; }
+  const note = document.getElementById('stage-note').value.trim();
+  await fetch(`/api/tracking/stage/${selectedJobId}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({stage: selectedStage, note})
+  });
+  closeModal();
+  loadBoard();
+}
+
+loadBoard();
+loadAnalytics();
+setInterval(loadBoard, 20000);
+</script>
+</body>
+</html>

@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Apply — Apex Job Agent</title>
+<style>
+:root{--bg:#09090f;--s1:#111320;--s2:#191d30;--s3:#202438;--acc:#6366f1;--acc2:#a5b4fc;--grn:#22c55e;--ylw:#f59e0b;--red:#ef4444;--txt:#e2e8f0;--mut:#94a3b8;--bdr:#252a45;--r:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+nav{background:var(--s1);border-bottom:1px solid var(--bdr);height:60px;display:flex;align-items:center;padding:0 28px;gap:6px;flex-shrink:0;z-index:100}
+.logo{font-weight:800;font-size:18px;background:linear-gradient(135deg,#e2e8f0,var(--acc2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-right:24px}
+nav a{color:var(--mut);text-decoration:none;padding:7px 14px;border-radius:9px;font-size:14px;transition:all .2s}
+nav a:hover,nav a.on{background:var(--s2);color:var(--txt)}
+.layout{display:grid;grid-template-columns:320px 1fr 300px;flex:1;overflow:hidden;min-height:0}
+
+/* Sidebar */
+.sidebar{background:var(--s1);border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
+.sb-head{padding:12px 14px;border-bottom:1px solid var(--bdr);flex-shrink:0}
+.sb-head h2{font-size:14px;font-weight:600;margin-bottom:10px}
+.srch{background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:7px 10px;font-size:13px;color:var(--txt);width:100%;outline:none;margin-bottom:8px}
+.srch:focus{border-color:var(--acc)}
+.filters{display:flex;gap:3px;flex-wrap:wrap}
+.fb{padding:3px 10px;border-radius:20px;border:1px solid var(--bdr);background:transparent;color:var(--mut);font-size:11px;cursor:pointer;transition:all .15s}
+.fb.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.job-list{overflow-y:auto;flex:1}
+.ji{padding:11px 14px;border-bottom:1px solid var(--bdr);cursor:pointer;transition:background .15s}
+.ji:hover{background:var(--s2)}.ji.sel{background:var(--s2);border-left:3px solid var(--acc)}
+.ji-title{font-size:13px;font-weight:600;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ji-co{font-size:11px;color:var(--mut);margin-bottom:5px}
+.ji-meta{display:flex;gap:6px;align-items:center}
+.badge{display:inline-flex;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600}
+.b-idle{background:var(--s3);color:var(--mut)}.b-fill{background:#1e0a38;color:#d8b4fe}
+.b-wait{background:#3b2002;color:#fde68a}.b-rev{background:#0c1f3f;color:#93c5fd}
+.b-done{background:#052e16;color:#86efac}.b-fail{background:#3b0e0e;color:#fca5a5}
+.score-sm{font-size:11px;color:var(--acc2);font-weight:600}
+
+/* Main */
+.main{overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:0}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--mut);text-align:center;gap:8px}
+.empty-icon{font-size:48px}
+.job-header{margin-bottom:16px}
+.job-title{font-size:19px;font-weight:700;margin-bottom:4px}
+.job-meta{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+.jm{font-size:13px;color:var(--mut)}
+.ext-link{font-size:12px;color:var(--acc2);text-decoration:none}
+.ext-link:hover{text-decoration:underline}
+
+/* Brief box */
+.brief-box{background:var(--s2);border:1px solid var(--bdr);border-radius:10px;padding:13px;margin-bottom:16px;font-size:13px;color:var(--mut);line-height:1.6}
+.brief-title{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--acc2);margin-bottom:6px;font-weight:600}
+
+/* Steps */
+.steps{display:flex;margin-bottom:18px;position:relative}
+.steps::before{content:'';position:absolute;top:11px;left:12px;right:12px;height:2px;background:var(--bdr);z-index:0}
+.step{flex:1;display:flex;flex-direction:column;align-items:center;position:relative;z-index:1}
+.step-dot{width:22px;height:22px;border-radius:50%;background:var(--bdr);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;margin-bottom:4px;transition:all .3s}
+.step.done .step-dot{background:var(--grn);color:#fff}
+.step.on .step-dot{background:var(--acc);color:#fff;box-shadow:0 0 0 3px rgba(99,102,241,.3)}
+.step-lbl{font-size:10px;color:var(--mut);text-align:center}
+.step.on .step-lbl{color:var(--txt)}
+
+/* Log */
+.log-box{background:#060810;border:1px solid var(--bdr);border-radius:9px;padding:12px 14px;font-family:monospace;font-size:12px;height:130px;overflow-y:auto;margin-bottom:16px}
+.le{color:var(--mut);margin-bottom:3px;line-height:1.4}
+.le.info{color:var(--txt)}.le.ok{color:var(--grn)}.le.warn{color:var(--ylw)}.le.err{color:var(--red)}
+
+/* Action area */
+.action-area{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:18px}
+.action-title{font-size:15px;font-weight:600;margin-bottom:5px}
+.action-desc{font-size:13px;color:var(--mut);margin-bottom:14px}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:8px 18px;border-radius:9px;font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all .2s}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-p{background:var(--acc);color:#fff}.btn-p:hover:not(:disabled){background:#5254cc}
+.btn-g{background:#166534;color:#86efac;border:1px solid var(--grn)}.btn-g:hover:not(:disabled){background:#15803d}
+.btn-r{background:#7f1d1d;color:#fca5a5;border:1px solid var(--red)}.btn-r:hover:not(:disabled){background:#991b1b}
+.btn-o{background:transparent;border:1px solid var(--bdr);color:var(--txt)}.btn-o:hover:not(:disabled){border-color:var(--acc);color:var(--acc2)}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.mf-grid{display:grid;gap:10px;max-height:360px;overflow-y:auto;margin-bottom:6px}
+.mf-item{background:var(--s2);border:1px solid var(--bdr);border-radius:9px;padding:12px}
+.mf-lbl{font-size:13px;font-weight:600;margin-bottom:3px}
+.mf-tried{font-size:11px;color:var(--mut);font-style:italic;margin-bottom:7px}
+input[type=text],input[type=number],input[type=email],input[type=tel],select,textarea{background:var(--s3);border:1px solid var(--bdr);border-radius:8px;padding:8px 12px;font-size:14px;color:var(--txt);width:100%;outline:none;font-family:inherit;transition:border-color .2s}
+input:focus,select:focus,textarea:focus{border-color:var(--acc)}
+.ss-wrap{border:2px solid var(--bdr);border-radius:9px;overflow:hidden;margin-bottom:10px;max-height:460px;overflow-y:auto}
+.ss-wrap img{width:100%;display:block}
+textarea.corr{min-height:65px;resize:vertical}
+.working{display:flex;align-items:center;gap:12px;padding:18px;background:var(--s2);border-radius:9px}
+.sp{display:inline-block;width:18px;height:18px;border:2px solid transparent;border-top-color:var(--acc2);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.done-card{text-align:center;padding:40px 20px}
+.done-card .icon{font-size:48px;margin-bottom:12px}
+
+/* Ghostwriter panel */
+.gw-panel{background:var(--s1);border-left:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
+.gw-head{padding:14px 16px;border-bottom:1px solid var(--bdr);flex-shrink:0}
+.gw-head h3{font-size:14px;font-weight:600;margin-bottom:10px}
+.gw-tabs{display:flex;gap:3px}
+.gw-tab{padding:5px 11px;border-radius:7px;border:none;background:transparent;color:var(--mut);font-size:12px;cursor:pointer;transition:all .15s}
+.gw-tab.on{background:var(--s3);color:var(--txt)}
+.gw-content{flex:1;overflow-y:auto;padding:14px;display:none}
+.gw-content.on{display:flex;flex-direction:column;gap:10px}
+.gw-msg{padding:9px 12px;border-radius:9px;font-size:13px;line-height:1.5;max-width:100%;white-space:pre-wrap}
+.gw-msg.user{background:var(--acc);color:#fff;align-self:flex-end;max-width:90%}
+.gw-msg.ai{background:var(--s2);border:1px solid var(--bdr);color:var(--txt)}
+.gw-input-row{padding:10px 14px;border-top:1px solid var(--bdr);display:flex;gap:8px;flex-shrink:0}
+.gw-input{flex:1;background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:8px 11px;font-size:13px;color:var(--txt);outline:none;font-family:inherit}
+.gw-input:focus{border-color:var(--acc)}
+.gw-send{background:var(--acc);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer}
+.gw-send:hover{background:#5254cc}
+.gw-btn{width:100%;padding:9px;border-radius:8px;border:1px solid var(--bdr);background:var(--s2);color:var(--txt);font-size:13px;cursor:pointer;text-align:left;transition:all .2s}
+.gw-btn:hover{border-color:var(--acc);color:var(--acc2)}
+.no-job-msg{color:var(--mut);font-size:13px;padding:20px;text-align:center}
+</style>
+</head>
+<body>
+<nav>
+  <span class="logo">⚡ Apex</span>
+  <a href="/">Dashboard</a><a href="/profile">Profile</a>
+  <a href="/jobs">Jobs</a><a href="/apply" class="on">Apply</a><a href="/tracking">Pipeline</a>
+  <a href="/settings">Settings</a>
+</nav>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sb-head">
+      <h2>Jobs Queue</h2>
+      <input class="srch" id="sq" placeholder="Search..." oninput="renderList()">
+      <div class="filters">
+        <button class="fb on" onclick="setFilter('',this)">All</button>
+        <button class="fb" onclick="setFilter('found',this)">Pending</button>
+        <button class="fb" onclick="setFilter('awaiting_input',this)">⚠ Input</button>
+        <button class="fb" onclick="setFilter('screenshot_review',this)">👁 Review</button>
+        <button class="fb" onclick="setFilter('done',this)">✓ Done</button>
+      </div>
+    </div>
+    <div class="job-list" id="job-list"><div style="padding:32px;text-align:center;color:var(--mut)">Loading...</div></div>
+  </div>
+
+  <!-- Main -->
+  <div class="main" id="main">
+    <div class="empty" id="panel-empty">
+      <div class="empty-icon">📋</div>
+      <div style="font-size:17px;font-weight:600">Select a job to apply</div>
+      <div style="font-size:13px">Choose from the queue on the left</div>
+    </div>
+    <div id="panel-job" style="display:none">
+      <div class="job-header">
+        <div class="job-title" id="d-title">—</div>
+        <div class="job-meta">
+          <span class="jm" id="d-co">—</span>
+          <span class="jm" id="d-loc">—</span>
+          <span class="jm" id="d-src">—</span>
+        </div>
+        <a class="ext-link" id="d-url" href="#" target="_blank">Open job link ↗</a>
+      </div>
+      <div class="brief-box" id="brief-box" style="display:none">
+        <div class="brief-title">AI Brief</div>
+        <div id="brief-text"></div>
+      </div>
+      <div class="steps" id="steps-bar">
+        <div class="step" id="stp1"><div class="step-dot">1</div><div class="step-lbl">Analyze</div></div>
+        <div class="step" id="stp2"><div class="step-dot">2</div><div class="step-lbl">Fill</div></div>
+        <div class="step" id="stp3"><div class="step-dot">3</div><div class="step-lbl">Your Input</div></div>
+        <div class="step" id="stp4"><div class="step-dot">4</div><div class="step-lbl">Re-fill</div></div>
+        <div class="step" id="stp5"><div class="step-dot">5</div><div class="step-lbl">Review</div></div>
+        <div class="step" id="stp6"><div class="step-dot">6</div><div class="step-lbl">Submit</div></div>
+      </div>
+      <div class="log-box" id="log"></div>
+      <div class="action-area" id="action"></div>
+    </div>
+  </div>
+
+  <!-- Ghostwriter -->
+  <div class="gw-panel">
+    <div class="gw-head">
+      <h3>✨ AI Assistant</h3>
+      <div class="gw-tabs">
+        <button class="gw-tab on" onclick="gwTab('chat',this)">Chat</button>
+        <button class="gw-tab" onclick="gwTab('cover',this)">Cover Letter</button>
+        <button class="gw-tab" onclick="gwTab('prep',this)">Interview</button>
+      </div>
+    </div>
+    <div class="gw-content on" id="gw-chat">
+      <div class="no-job-msg" id="gw-no-job">Select a job to start chatting</div>
+    </div>
+    <div class="gw-content" id="gw-cover">
+      <div class="no-job-msg">Select a job first</div>
+    </div>
+    <div class="gw-content" id="gw-prep">
+      <div class="no-job-msg">Select a job first</div>
+    </div>
+    <div class="gw-input-row" id="gw-input-row" style="display:none">
+      <input class="gw-input" id="gw-msg" placeholder="Ask anything about this job..." onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="gw-send" onclick="sendChat()">→</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let allJobs=[], allSessions={}, selId=null, ws=null, filter='';
+let gwHistory=[], activeGwTab='chat';
+
+async function loadAll() {
+  const [jr, sr] = await Promise.all([
+    fetch('/api/jobs?limit=500').then(r=>r.json()).catch(()=>[]),
+    fetch('/api/apply/sessions').then(r=>r.json()).catch(()=>[])
+  ]);
+  allSessions={};
+  sr.forEach(s => allSessions[s.job_id]=s);
+  allJobs=jr;
+  renderList();
+}
+
+function getState(j){ return (allSessions[j.job_id]||{}).state || j.status; }
+
+function bc(s){return({'done':'b-done','applied':'b-done','awaiting_input':'b-wait','screenshot_review':'b-rev','filling':'b-fill','refilling':'b-fill','analyzing':'b-fill','failed':'b-fail'}[s]||'b-idle');}
+function lb(s){return({'found':'Pending','idle':'Ready','analyzing':'Analyzing…','filling':'Filling…','refilling':'Re-filling…','awaiting_input':'⚠ Needs Input','screenshot_review':'👁 Review','submitting':'Submitting…','done':'Applied ✓','applied':'Applied ✓','failed':'Failed','skipped':'Skipped','error':'Error'}[s]||s);}
+
+function setFilter(f,el){ filter=f; document.querySelectorAll('.filters .fb').forEach(b=>b.classList.remove('on')); el.classList.add('on'); renderList(); }
+
+function renderList(){
+  const q=document.getElementById('sq').value.toLowerCase();
+  let jobs=allJobs.filter(j=>{
+    const s=getState(j);
+    if(filter){
+      if(filter==='found'&&s!=='found'&&s!=='idle')return false;
+      if(filter!=='found'&&s!==filter)return false;
+    }
+    if(q&&!j.title.toLowerCase().includes(q)&&!j.company.toLowerCase().includes(q))return false;
+    return true;
+  });
+  const el=document.getElementById('job-list');
+  el.innerHTML=jobs.length?jobs.map(j=>{
+    const state=getState(j);
+    return`<div class="ji ${j.job_id===selId?'sel':''}" onclick="selectJob('${j.job_id}')">
+      <div class="ji-title">${j.title}</div>
+      <div class="ji-co">${j.company} · ${j.location||'Remote'}</div>
+      <div class="ji-meta">
+        <span class="badge ${bc(state)}">${lb(state)}</span>
+        ${j.ai_score!=null?`<span class="score-sm">${j.ai_score}/100</span>`:''}
+      </div>
+    </div>`;
+  }).join(''):'<div style="padding:32px;text-align:center;color:var(--mut);font-size:13px">No jobs</div>';
+}
+
+async function selectJob(jobId) {
+  selId=jobId;
+  renderList();
+  const job=allJobs.find(j=>j.job_id===jobId);
+  if(!job)return;
+
+  document.getElementById('panel-empty').style.display='none';
+  document.getElementById('panel-job').style.display='block';
+  document.getElementById('d-title').textContent=job.title;
+  document.getElementById('d-co').textContent=job.company;
+  document.getElementById('d-loc').textContent=job.location||'Remote';
+  document.getElementById('d-src').textContent=job.source;
+  const ul=document.getElementById('d-url'); ul.href=job.url; ul.textContent=job.url.slice(0,60)+'…';
+
+  if(job.brief){ document.getElementById('brief-box').style.display='block'; document.getElementById('brief-text').textContent=job.brief; }
+  else { document.getElementById('brief-box').style.display='none'; }
+
+  document.getElementById('log').innerHTML='';
+  connectWS(jobId);
+
+  // Init ghostwriter
+  gwHistory=[];
+  initGhostwriter(job);
+
+  // Load session
+  const session=allSessions[jobId];
+  if(session) restoreSession(session);
+  else renderIdle(job);
+}
+
+function connectWS(jobId){
+  if(ws){try{ws.close();}catch(e){}}
+  ws=new WebSocket(`ws://${location.host}/ws/${jobId}`);
+  ws.onmessage=e=>{
+    const msg=JSON.parse(e.data);
+    if(msg.event==='ping')return;
+    handleWS(msg.event,msg.data,jobId);
+  };
+}
+
+function handleWS(event,data,jobId){
+  if(event==='log'){ addLog(data,'info'); return; }
+  if(event==='state'){ updateSteps(data); if(['analyzing','filling','refilling','submitting'].includes(data))renderWorking(data); return; }
+  if(event==='awaiting_input'){ updateSteps('awaiting_input'); renderMissing(data.missing_fields||[],jobId); addLog('⚠ Need your input','warn'); return; }
+  if(event==='screenshot_review'){
+    updateSteps('screenshot_review');
+    fetch(`/api/apply/status/${jobId}`).then(r=>r.json()).then(s=>renderReview(s.screenshots||[],jobId));
+    addLog('📸 Review the screenshot','warn'); return;
+  }
+  if(event==='done'){ updateSteps('done'); renderDone(); addLog('✅ Application submitted!','ok'); loadAll(); return; }
+  if(event==='error'){ addLog('❌ '+data,'err'); renderIdle(allJobs.find(j=>j.job_id===jobId)); return; }
+}
+
+function restoreSession(s){
+  updateSteps(s.state);
+  (s.log||[]).slice(-30).forEach(l=>{ const d=document.createElement('div'); d.className='le info'; d.textContent=l; document.getElementById('log').appendChild(d); });
+  document.getElementById('log').scrollTop=9999;
+  if(['idle','failed','skipped'].includes(s.state)) renderIdle(allJobs.find(j=>j.job_id===s.job_id));
+  else if(['analyzing','filling','refilling','submitting'].includes(s.state)) renderWorking(s.state);
+  else if(s.state==='awaiting_input') renderMissing(s.missing_prompts||[],s.job_id);
+  else if(s.state==='screenshot_review') renderReview(s.screenshots||[],s.job_id);
+  else if(s.state==='done') renderDone();
+}
+
+function updateSteps(state){
+  const order=['analyzing','filling','awaiting_input','refilling','screenshot_review','submitting','done'];
+  const cur=order.indexOf(state);
+  for(let i=1;i<=6;i++){ const el=document.getElementById('stp'+i); el.classList.remove('on','done'); if(i-1<cur)el.classList.add('done'); else if(i-1===cur)el.classList.add('on'); }
+}
+
+function addLog(msg,type='info'){
+  const box=document.getElementById('log'); const d=document.createElement('div');
+  d.className='le '+type; d.textContent='['+new Date().toLocaleTimeString()+'] '+msg;
+  box.appendChild(d); box.scrollTop=box.scrollHeight;
+}
+
+function renderIdle(job){
+  if(!job)return;
+  document.getElementById('action').innerHTML=`
+    <div class="action-title">Ready to Apply</div>
+    <div class="action-desc">The agent will open the application form, fill all known fields using your profile, then ask you for anything it couldn't find. Works on any URL — no Easy Apply restriction.</div>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="startApply('${job.job_id}')">🚀 Start Application</button>
+      <button class="btn btn-o" onclick="skipJob('${job.job_id}')">Skip</button>
+    </div>`;
+}
+
+function renderWorking(state){
+  const labels={analyzing:'Analyzing form with AI…',filling:'Filling form fields…',refilling:'Filling missing fields…',submitting:'Submitting application…'};
+  document.getElementById('action').innerHTML=`<div class="working"><div class="sp"></div><span style="font-size:14px">${labels[state]||'Working…'}</span></div>`;
+}
+
+function renderMissing(fields,jobId){
+  if(!fields.length){ document.getElementById('action').innerHTML=`<div class="working"><span>✅ All fields filled — awaiting screenshot…</span></div>`; return; }
+  const rows=fields.map(f=>`
+    <div class="mf-item">
+      <div class="mf-lbl">${f.label||f.field_key}</div>
+      ${f.placeholder?`<div class="mf-tried">Agent tried: "${f.placeholder}"</div>`:''}
+      ${f.options?.length?`<select id="mf_${f.field_key}" name="${f.field_key}"><option value="">Select…</option>${f.options.map(o=>`<option>${o}</option>`).join('')}</select>`:`<input type="text" id="mf_${f.field_key}" name="${f.field_key}" placeholder="Enter ${f.label||f.field_key}…">`}
+    </div>`).join('');
+  document.getElementById('action').innerHTML=`
+    <div class="action-title">⚠ Missing — ${fields.length} field${fields.length>1?'s':''}</div>
+    <div class="action-desc">Answers saved permanently for future applications.</div>
+    <div class="mf-grid">${rows}</div>
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="submitAnswers('${jobId}')">✅ Submit & Continue</button>
+      <button class="btn btn-o" onclick="skipJob('${jobId}')">Skip Job</button>
+    </div>`;
+}
+
+function renderReview(screenshots,jobId){
+  const imgs=screenshots.length?screenshots.map((ss,i)=>`<div id="ssf${i}" ${i>0?'style="display:none"':''}><img src="/screenshots/${ss.split(/[\\/]/).pop()}" loading="lazy"></div>`).join('')+'<div style="display:flex;gap:5px;margin-top:8px">'+(screenshots.length>1?screenshots.map((_,i)=>`<button class="btn btn-o" style="padding:3px 9px;font-size:11px" onclick="showSS(${i})">Page ${i+1}</button>`).join(''):'')+'</div>':'<div style="padding:20px;color:var(--mut)">No screenshot</div>';
+  document.getElementById('action').innerHTML=`
+    <div class="action-title">👁 Review Before Submitting</div>
+    <div class="action-desc">Check the filled form. Describe corrections or approve.</div>
+    <div class="ss-wrap">${imgs}</div>
+    <textarea class="corr" id="corr" placeholder="e.g. Change experience to 2 years…"></textarea>
+    <div class="btn-row">
+      <button class="btn btn-g" onclick="submitFinal('${jobId}',false)">🚀 Approve & Submit</button>
+      <button class="btn btn-p" onclick="submitFinal('${jobId}',true)">✏ Correct & Submit</button>
+      <button class="btn btn-r" onclick="skipJob('${jobId}')">✕ Skip</button>
+    </div>`;
+}
+
+function showSS(i){ document.querySelectorAll('[id^="ssf"]').forEach((el,idx)=>el.style.display=idx===i?'block':'none'); }
+
+function renderDone(){
+  document.getElementById('action').innerHTML=`<div class="done-card"><div class="icon">✅</div><div style="font-size:18px;font-weight:700;color:var(--grn)">Submitted!</div><div style="font-size:13px;color:var(--mut);margin-top:6px">Application sent successfully.</div></div>`;
+}
+
+async function startApply(jobId){ addLog('Starting…'); renderWorking('analyzing'); updateSteps('analyzing'); await fetch(`/api/apply/start/${jobId}`,{method:'POST'}); }
+
+async function submitAnswers(jobId){
+  const answers={};
+  document.querySelectorAll('.mf-grid [name]').forEach(el=>{ if(el.value.trim())answers[el.name]=el.value.trim(); });
+  addLog(`Submitting ${Object.keys(answers).length} answers…`); renderWorking('refilling'); updateSteps('refilling');
+  await fetch(`/api/apply/answer/${jobId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answers})});
+}
+
+async function submitFinal(jobId,withCorr){
+  const corrections=withCorr?[document.getElementById('corr')?.value?.trim()].filter(Boolean):[];
+  addLog('Submitting…'); renderWorking('submitting'); updateSteps('submitting');
+  await fetch(`/api/apply/submit/${jobId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({corrections})});
+}
+
+async function skipJob(jobId){ if(!confirm('Skip this job?'))return; await fetch(`/api/apply/skip/${jobId}`,{method:'POST'}); selId=null; document.getElementById('panel-job').style.display='none'; document.getElementById('panel-empty').style.display='flex'; loadAll(); }
+
+// ── Ghostwriter ──────────────────────────────────────────────
+function gwTab(tab,el){
+  activeGwTab=tab;
+  document.querySelectorAll('.gw-tab').forEach(t=>t.classList.remove('on')); el.classList.add('on');
+  document.querySelectorAll('.gw-content').forEach(c=>c.classList.remove('on'));
+  document.getElementById('gw-'+tab).classList.add('on');
+  document.getElementById('gw-input-row').style.display=tab==='chat'&&selId?'flex':'none';
+}
+
+function initGhostwriter(job){
+  document.getElementById('gw-input-row').style.display=activeGwTab==='chat'?'flex':'none';
+  document.getElementById('gw-chat').innerHTML=`
+    <div class="gw-msg ai">Hi! I'm your AI assistant for **${job.title}** at **${job.company}**. I know the full job description and your profile. How can I help?</div>`;
+  document.getElementById('gw-cover').innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:13px;color:var(--mut)">Generate a tailored cover letter for this job.</div>
+      <select id="cl-tone" style="background:var(--s3);border:1px solid var(--bdr);border-radius:8px;padding:8px;color:var(--txt);font-size:13px">
+        <option value="professional">Professional</option>
+        <option value="enthusiastic">Enthusiastic</option>
+        <option value="concise">Concise</option>
+      </select>
+      <button class="gw-btn" onclick="genCoverLetter('${job.job_id}')">✍ Generate Cover Letter</button>
+      <div id="cl-output"></div>
+    </div>`;
+  document.getElementById('gw-prep').innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:13px;color:var(--mut)">Generate likely interview questions + suggested answers.</div>
+      <button class="gw-btn" onclick="genInterviewPrep('${job.job_id}')">🎯 Generate Interview Prep</button>
+      <div id="prep-output"></div>
+    </div>`;
+}
+
+async function sendChat(){
+  const input=document.getElementById('gw-msg');
+  const msg=input.value.trim(); if(!msg||!selId)return;
+  input.value='';
+  const chatEl=document.getElementById('gw-chat');
+  chatEl.innerHTML+=`<div class="gw-msg user">${msg}</div><div class="gw-msg ai" id="gw-typing"><span class="sp" style="width:12px;height:12px"></span></div>`;
+  chatEl.scrollTop=chatEl.scrollHeight;
+  try {
+    const r=await fetch(`/api/ghostwriter/chat/${selId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg,history:gwHistory})});
+    const d=await r.json();
+    gwHistory.push({role:'user',content:msg},{role:'assistant',content:d.response});
+    document.getElementById('gw-typing').className='gw-msg ai';
+    document.getElementById('gw-typing').id='';
+    document.getElementById('gw-typing') || (chatEl.lastElementChild.textContent=d.response);
+    chatEl.lastElementChild.textContent=d.response;
+  } catch(e){ document.getElementById('gw-typing').textContent='Error — try again'; }
+  chatEl.scrollTop=chatEl.scrollHeight;
+}
+
+async function genCoverLetter(jobId){
+  const tone=document.getElementById('cl-tone').value;
+  document.getElementById('cl-output').innerHTML='<div class="sp" style="width:14px;height:14px"></div>';
+  try {
+    const r=await fetch(`/api/ghostwriter/cover-letter/${jobId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tone})});
+    const d=await r.json();
+    document.getElementById('cl-output').innerHTML=`<div style="background:var(--s2);border:1px solid var(--bdr);border-radius:9px;padding:12px;font-size:13px;line-height:1.6;white-space:pre-wrap;color:var(--txt)">${d.cover_letter}</div><button class="gw-btn" style="margin-top:6px" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)">📋 Copy</button>`;
+  } catch(e){ document.getElementById('cl-output').textContent='Generation failed'; }
+}
+
+async function genInterviewPrep(jobId){
+  document.getElementById('prep-output').innerHTML='<div class="sp" style="width:14px;height:14px"></div>';
+  try {
+    const r=await fetch(`/api/ghostwriter/interview-prep/${jobId}`,{method:'POST'});
+    const d=await r.json();
+    let html='';
+    for(const [cat,qs] of Object.entries({Technical:d.technical,Behavioural:d.behavioural,Company:d.company})){
+      if(!qs?.length)continue;
+      html+=`<div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--acc2);margin-bottom:6px;font-weight:600">${cat}</div>`;
+      qs.forEach(q=>{ html+=`<div style="background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:10px;margin-bottom:7px"><div style="font-size:13px;font-weight:600;margin-bottom:4px">Q: ${q.question}</div><div style="font-size:12px;color:var(--mut)">${q.answer}</div></div>`; });
+    }
+    document.getElementById('prep-output').innerHTML=html||'No questions generated';
+  } catch(e){ document.getElementById('prep-output').textContent='Generation failed'; }
+}
+
+// ── Init ──────────────────────────────────────────────────────
+loadAll(); setInterval(loadAll, 20000);
+if(location.hash){const id=location.hash.slice(1);setTimeout(async()=>{await loadAll();if(allJobs.find(j=>j.job_id===id))selectJob(id);},600);}
+</script>
+</body>
+</html>

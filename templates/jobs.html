@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jobs — Apex Job Agent</title>
+<style>
+:root{--bg:#09090f;--s1:#111320;--s2:#191d30;--s3:#202438;--acc:#6366f1;--acc2:#a5b4fc;--grn:#22c55e;--ylw:#f59e0b;--red:#ef4444;--txt:#e2e8f0;--mut:#94a3b8;--bdr:#252a45;--r:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif}
+nav{background:var(--s1);border-bottom:1px solid var(--bdr);height:60px;display:flex;align-items:center;padding:0 28px;gap:6px;position:sticky;top:0;z-index:100}
+.logo{font-weight:800;font-size:18px;background:linear-gradient(135deg,#e2e8f0,var(--acc2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-right:24px}
+nav a{color:var(--mut);text-decoration:none;padding:7px 14px;border-radius:9px;font-size:14px;transition:all .2s}
+nav a:hover,nav a.on{background:var(--s2);color:var(--txt)}
+.container{max-width:1400px;margin:0 auto;padding:28px 24px}
+h1{font-size:22px;font-weight:700;margin-bottom:20px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.search{background:var(--s1);border:1px solid var(--bdr);border-radius:9px;padding:8px 14px;font-size:14px;color:var(--txt);outline:none;width:260px}
+.search:focus{border-color:var(--acc)}
+.fgrp{display:flex;gap:3px}
+.fb{padding:7px 13px;border-radius:8px;border:1px solid var(--bdr);background:transparent;color:var(--mut);font-size:12px;cursor:pointer;transition:all .2s}
+.fb.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.count{margin-left:auto;font-size:13px;color:var(--mut)}
+table{width:100%;border-collapse:collapse;background:var(--s1);border-radius:var(--r);overflow:hidden;border:1px solid var(--bdr)}
+thead{background:var(--s2)}
+th{text-align:left;padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);cursor:pointer;white-space:nowrap}
+th:hover{color:var(--txt)}
+td{padding:10px 14px;border-top:1px solid var(--bdr);font-size:13px;vertical-align:top}
+tr:hover td{background:var(--s2)}
+.score-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:700}
+.sc-hi{background:#052e16;color:#86efac}.sc-mid{background:#1e3a5f;color:#93c5fd}
+.sc-lo{background:#3b2002;color:#fde68a}.sc-none{background:var(--s3);color:var(--mut)}
+.badge{display:inline-flex;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
+.b-found{background:var(--s3);color:var(--mut)}.b-applied{background:#052e16;color:#86efac}
+.b-skip{background:var(--s3);color:#475569}.b-err{background:#3b0e0e;color:#fca5a5}
+.brief{font-size:12px;color:var(--mut);margin-top:3px;line-height:1.5;max-width:380px}
+.trunc{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:none;text-decoration:none;transition:all .15s}
+.btn-a{background:var(--acc);color:#fff}.btn-a:hover{background:#5254cc}
+.btn-o{background:transparent;border:1px solid var(--bdr);color:var(--txt)}
+.btn-o:hover{border-color:var(--acc);color:var(--acc2)}
+.btn-g{background:#052e16;color:#86efac;border:1px solid var(--grn)}
+.pages{display:flex;gap:5px;justify-content:center;margin-top:16px;align-items:center}
+.pb{padding:5px 11px;border-radius:6px;border:1px solid var(--bdr);background:transparent;color:var(--mut);font-size:13px;cursor:pointer}
+.pb.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.sp{display:inline-block;width:12px;height:12px;border:2px solid transparent;border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<nav>
+  <span class="logo">⚡ Apex</span>
+  <a href="/">Dashboard</a><a href="/profile">Profile</a>
+  <a href="/jobs" class="on">Jobs</a><a href="/apply">Apply</a><a href="/tracking">Pipeline</a>
+  <a href="/settings">Settings</a>
+</nav>
+<div class="container">
+  <h1>Job Listings</h1>
+  <div class="toolbar">
+    <input class="search" id="sq" placeholder="Search title, company..." oninput="applyFilters()">
+    <div class="fgrp">
+      <button class="fb on" onclick="setF('',this)">All</button>
+      <button class="fb" onclick="setF('found',this)">Pending</button>
+      <button class="fb" onclick="setF('applied',this)">Applied</button>
+      <button class="fb" onclick="setF('skipped',this)">Skipped</button>
+      <button class="fb" onclick="setF('error',this)">Errors</button>
+    </div>
+    <span class="count" id="cnt"></span>
+    <button class="btn btn-o" style="margin-left:auto;font-size:12px" onclick="purge()">🗑 Purge Dupes</button>
+  </div>
+  <table>
+    <thead><tr>
+      <th onclick="sort('title')">Title ↕</th>
+      <th onclick="sort('company')">Company ↕</th>
+      <th>Location</th>
+      <th onclick="sort('ai_score')">AI Score ↕</th>
+      <th>Status</th>
+      <th onclick="sort('found_at')">Found ↕</th>
+      <th></th>
+    </tr></thead>
+    <tbody id="tbody"><tr><td colspan="7" style="text-align:center;color:var(--mut);padding:44px">Loading...</td></tr></tbody>
+  </table>
+  <div class="pages" id="pages"></div>
+</div>
+
+<script>
+let all=[], filtered=[], sk='ai_score', sd=-1, sf='', pg=1;
+const PS=50;
+
+async function load() {
+  const r = await fetch('/api/jobs?limit=2000');
+  all = await r.json();
+  applyFilters();
+}
+
+function setF(s,el){ sf=s; document.querySelectorAll('.fb').forEach(b=>b.classList.remove('on')); el.classList.add('on'); pg=1; applyFilters(); }
+
+function sort(k){ if(sk===k)sd*=-1; else{sk=k;sd=-1;} applyFilters(); }
+
+function applyFilters(){
+  const q=document.getElementById('sq').value.toLowerCase();
+  filtered=all.filter(j=>{
+    if(sf&&j.status!==sf)return false;
+    if(q&&!j.title.toLowerCase().includes(q)&&!j.company.toLowerCase().includes(q))return false;
+    return true;
+  }).sort((a,b)=>{
+    const va=a[sk]??'', vb=b[sk]??'';
+    if(sk==='ai_score'){
+      if(va===null||va==='')return 1; if(vb===null||vb==='')return -1;
+    }
+    return typeof va==='number'?sd*(va-vb):sd*String(va).localeCompare(String(vb));
+  });
+  document.getElementById('cnt').textContent=filtered.length+' jobs';
+  render();
+}
+
+function scoreChip(s){
+  if(s===null||s===undefined)return'<span class="score-chip sc-none">—</span>';
+  const cls=s>=70?'sc-hi':s>=50?'sc-mid':s>=30?'sc-lo':'sc-none';
+  return`<span class="score-chip ${cls}">${s}</span>`;
+}
+
+function render(){
+  const rows=filtered.slice((pg-1)*PS,pg*PS);
+  const bc={found:'b-found',applied:'b-applied',skipped:'b-skip',error:'b-err',in_progress:'b-fill'};
+  document.getElementById('tbody').innerHTML=rows.length?rows.map(j=>`
+    <tr>
+      <td>
+        <div class="trunc" title="${j.title}">${j.title}</div>
+        ${j.brief?`<div class="brief">${j.brief.slice(0,120)}...</div>`:''}
+      </td>
+      <td>${j.company}</td>
+      <td style="color:var(--mut);font-size:12px">${j.location||'—'}</td>
+      <td>
+        ${scoreChip(j.ai_score)}
+        ${j.ai_score_reason?`<div style="font-size:11px;color:var(--mut);max-width:200px;margin-top:3px">${j.ai_score_reason.slice(0,80)}</div>`:''}
+      </td>
+      <td><span class="badge ${bc[j.status]||'b-found'}">${j.status}</span></td>
+      <td style="color:var(--mut);font-size:12px">${j.found_at?.slice(0,10)??''}</td>
+      <td style="display:flex;gap:5px;flex-wrap:wrap">
+        <a href="${j.url}" target="_blank" class="btn btn-o">↗</a>
+        ${j.status==='found'?`<a href="/apply#${j.job_id}" class="btn btn-a">Apply</a>`:''}
+        <button class="btn btn-g" onclick="brief('${j.job_id}',this)" title="Generate AI brief">AI</button>
+      </td>
+    </tr>`).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--mut);padding:44px">No jobs match</td></tr>';
+  renderPages();
+}
+
+function renderPages(){
+  const tot=Math.ceil(filtered.length/PS);
+  if(tot<=1){document.getElementById('pages').innerHTML='';return;}
+  let h='';
+  if(pg>1)h+=`<button class="pb" onclick="gp(${pg-1})">←</button>`;
+  for(let i=Math.max(1,pg-2);i<=Math.min(tot,pg+2);i++)
+    h+=`<button class="pb ${i===pg?'on':''}" onclick="gp(${i})">${i}</button>`;
+  if(pg<tot)h+=`<button class="pb" onclick="gp(${pg+1})">→</button>`;
+  document.getElementById('pages').innerHTML=h;
+}
+
+function gp(p){pg=p;render();window.scrollTo(0,0);}
+
+async function brief(jobId, btn) {
+  btn.innerHTML='<span class="sp"></span>';
+  btn.disabled=true;
+  try {
+    await fetch(`/api/jobs/${jobId}/brief`, {method:'POST'});
+    await load();
+  } finally { btn.disabled=false; btn.innerHTML='AI'; }
+}
+
+async function purge(){
+  if(!confirm('Remove duplicate jobs from DB?')) return;
+  const r = await fetch('/api/jobs/duplicates', {method:'DELETE'});
+  const d = await r.json();
+  alert(`Removed ${d.deleted} duplicates`);
+  load();
+}
+
+load(); setInterval(load, 30000);
+</script>
+</body>
+</html>

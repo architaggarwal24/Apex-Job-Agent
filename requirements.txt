@@ -1,0 +1,24 @@
+# Web framework
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+websockets>=12.0
+
+# LLM providers (install all, use whichever is configured in .env)
+openai>=1.10.0          # mistral, nvidia, openrouter, ollama, openai
+anthropic>=0.28.0       # anthropic
+google-generativeai>=0.7.0  # gemini
+
+# Browser automation
+playwright>=1.40.0
+
+# Resume parsing
+pdfplumber>=0.10.0
+
+# Scheduling
+APScheduler>=3.10.0
+
+# Utilities
+python-dotenv>=1.0.0
+requests>=2.31.0
+httpx>=0.27.0

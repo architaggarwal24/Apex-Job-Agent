@@ -1,0 +1,11 @@
+2026-06-09 11:35:24,694 [INFO] main: Starting Apex Job Agent UI → http://localhost:8000
+2026-06-09 11:35:24,694 [INFO] main: LLM: mistral / mistral-large-latest
+2026-06-09 11:35:24,695 [INFO] main: Dry run: False
+2026-06-09 11:35:36,211 [INFO] server.routes.onboarding: [Onboarding] Resume saved (189040 bytes)
+2026-06-09 11:35:36,213 [INFO] core.resume_parser: [ResumeParser] Extracting text from resume.pdf
+2026-06-09 11:35:36,415 [INFO] core.resume_parser: [ResumeParser] 3737 chars extracted — calling LLM
+2026-06-09 11:35:37,765 [INFO] httpx: HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-06-09 11:35:37,766 [ERROR] core.llm: [LLM] Call failed: Error code: 401 - {'detail': 'Unauthorized'}
+2026-06-09 11:35:37,766 [ERROR] core.resume_parser: [ResumeParser] LLM parse failed: LLM call failed (mistral): Error code: 401 - {'detail': 'Unauthorized'} — using regex fallback
+2026-06-09 11:35:37,832 [INFO] db.profile_db: [ProfileDB] Imported 5 fields from resume
+2026-06-09 11:37:32,564 [INFO] server.routes.settings: [Settings] Saved 5 settings: ['llm_provider', 'llm_temperature', 'nvidia_api_key', 'nvidia_base_url', 'nvidia_model']

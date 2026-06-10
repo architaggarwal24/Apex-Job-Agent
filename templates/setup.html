@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Setup — Apex Job Agent</title>
+<style>
+:root{--bg:#09090f;--s1:#111320;--s2:#191d30;--s3:#202438;--acc:#6366f1;--acc2:#a5b4fc;--grn:#22c55e;--ylw:#f59e0b;--red:#ef4444;--txt:#e2e8f0;--mut:#94a3b8;--bdr:#252a45;--r:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:44px;width:100%;max-width:600px;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+h1{font-size:28px;font-weight:800;margin-bottom:4px;background:linear-gradient(135deg,#e2e8f0,var(--acc2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sub{color:var(--mut);font-size:14px;margin-bottom:28px}
+.dots{display:flex;gap:6px;margin-bottom:28px}
+.dot{flex:1;height:4px;border-radius:2px;background:var(--bdr);transition:background .3s}
+.dot.on{background:var(--acc)}.dot.done{background:var(--grn)}
+.sec{display:none}.sec.on{display:block}
+.stitle{font-size:16px;font-weight:600;margin-bottom:4px}
+.ssub{font-size:13px;color:var(--mut);margin-bottom:20px}
+.upload{border:2px dashed var(--bdr);border-radius:var(--r);padding:44px 24px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:16px}
+.upload:hover,.upload.drag{border-color:var(--acc);background:rgba(99,102,241,.05)}
+.upload-icon{font-size:36px;margin-bottom:10px}
+.upload-lbl{font-size:15px;font-weight:500;margin-bottom:4px}
+.upload-hint{font-size:13px;color:var(--mut)}
+#fi{display:none}
+.prog{background:var(--s3);border-radius:4px;height:5px;overflow:hidden;margin:10px 0;display:none}
+.prog-bar{height:100%;background:var(--acc);border-radius:4px;width:0;transition:width .3s}
+.parsed{background:var(--s2);border:1px solid var(--bdr);border-radius:10px;padding:13px;margin-bottom:14px;display:none}
+.prow{display:flex;gap:8px;font-size:13px;margin-bottom:5px;align-items:flex-start}
+.prow:last-child{margin-bottom:0}
+.plbl{color:var(--mut);width:80px;flex-shrink:0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:540px){.grid{grid-template-columns:1fr}}
+.full{grid-column:1/-1}
+.fg{display:flex;flex-direction:column;gap:5px}
+label{font-size:11px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+input,select{background:var(--s3);border:1px solid var(--bdr);border-radius:9px;padding:9px 13px;font-size:14px;color:var(--txt);width:100%;outline:none;font-family:inherit;transition:border-color .2s}
+input:focus,select:focus{border-color:var(--acc)}
+.tag-list{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.tag-row{display:flex;gap:8px;align-items:center}
+.tag-row input{flex:1}
+.tag-rm{background:transparent;border:1px solid var(--bdr);color:var(--mut);border-radius:7px;padding:8px 10px;cursor:pointer;font-size:13px;flex-shrink:0;transition:all .2s;line-height:1}
+.tag-rm:hover{border-color:var(--red);color:var(--red)}
+.add-btn{display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 16px;border-radius:9px;font-size:13px;font-weight:500;cursor:pointer;border:1px dashed var(--bdr);background:transparent;color:var(--mut);transition:all .2s;width:100%}
+.add-btn:hover{border-color:var(--acc);color:var(--acc2)}
+.btn{display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 22px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all .2s;width:100%}
+.btn-p{background:var(--acc);color:#fff}.btn-p:hover{background:#5254cc}
+.btn-o{background:transparent;border:1px solid var(--bdr);color:var(--txt)}
+.btn-o:hover{border-color:var(--acc);color:var(--acc2)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-row{display:flex;gap:8px;margin-top:20px}
+.btn-row .btn{flex:1}
+.alert{padding:10px 14px;border-radius:9px;font-size:13px;margin-bottom:12px;display:none}
+.alert-red{background:#3b0e0e;border:1px solid #7f1d1d;color:#fca5a5}
+.sp{display:inline-block;width:14px;height:14px;border:2px solid transparent;border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.done-icon{font-size:56px;margin-bottom:16px;text-align:center}
+.done-title{font-size:22px;font-weight:700;margin-bottom:8px;text-align:center}
+.done-sub{font-size:14px;color:var(--mut);text-align:center;margin-bottom:28px}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Apex Job Agent</h1>
+  <p class="sub">Set up your profile in 4 steps.</p>
+  <div class="dots">
+    <div class="dot on" id="d1"></div><div class="dot" id="d2"></div>
+    <div class="dot" id="d3"></div><div class="dot" id="d4"></div>
+  </div>
+  <div id="alert" class="alert"></div>
+
+  <!-- Step 1: Resume -->
+  <div class="sec on" id="sec1">
+    <div class="stitle">Upload your resume</div>
+    <div class="ssub">We'll extract your details with AI automatically.</div>
+    <div class="upload" id="zone" onclick="document.getElementById('fi').click()"
+         ondragover="event.preventDefault();this.classList.add('drag')"
+         ondragleave="this.classList.remove('drag')" ondrop="drop(event)">
+      <div class="upload-icon">📄</div>
+      <div class="upload-lbl">Drop your resume PDF here</div>
+      <div class="upload-hint">or click to browse</div>
+    </div>
+    <input type="file" id="fi" accept=".pdf" onchange="uploadFile(this.files[0])">
+    <div class="prog" id="prog"><div class="prog-bar" id="pbar"></div></div>
+    <div class="parsed" id="parsed">
+      <div class="prow"><span class="plbl">Name</span><span id="p-name">—</span></div>
+      <div class="prow"><span class="plbl">Email</span><span id="p-email">—</span></div>
+      <div class="prow"><span class="plbl">Skills</span><span id="p-skills" style="color:var(--mut)">—</span></div>
+      <div class="prow"><span class="plbl">Roles</span><span id="p-roles" style="color:var(--acc2)">—</span></div>
+    </div>
+    <button class="btn btn-p" id="btn1" onclick="go(2)" disabled>Next: Your Details →</button>
+  </div>
+
+  <!-- Step 2: Profile -->
+  <div class="sec" id="sec2">
+    <div class="stitle">Complete your profile</div>
+    <div class="ssub">Used to auto-fill every application form.</div>
+    <div class="grid" id="pform">
+      <div class="fg"><label>Full Name *</label><input name="full_name" placeholder="Archit Aggarwal"></div>
+      <div class="fg"><label>Email *</label><input name="email" type="email" placeholder="you@example.com"></div>
+      <div class="fg"><label>Phone *</label><input name="phone" placeholder="+91 98765 43210"></div>
+      <div class="fg"><label>City</label><input name="location_city" placeholder="Delhi"></div>
+      <div class="fg"><label>LinkedIn URL</label><input name="linkedin_url" placeholder="https://linkedin.com/in/..."></div>
+      <div class="fg"><label>GitHub URL</label><input name="github_url" placeholder="https://github.com/..."></div>
+      <div class="fg"><label>Experience (years)</label><input name="experience_years" type="number" value="0" min="0" step="0.5"></div>
+      <div class="fg"><label>Notice Period</label><input name="notice_period_label" placeholder="Immediate"></div>
+      <div class="fg"><label>Expected CTC (LPA)</label><input name="expected_ctc_lpa" placeholder="10"></div>
+      <div class="fg"><label>Work Mode</label>
+        <select name="work_mode_preference">
+          <option>Hybrid</option><option>Remote</option><option>Onsite</option>
+        </select>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-o" onclick="go(1)">← Back</button>
+      <button class="btn btn-p" onclick="saveProfile()">Save & Continue →</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Positions -->
+  <div class="sec" id="sec3">
+    <div class="stitle">What positions are you targeting?</div>
+    <div class="ssub">The agent will search LinkedIn & Indeed for these job titles. Add as many as you want.</div>
+    <div class="tag-list" id="pos-list"></div>
+    <button class="add-btn" onclick="addTag('pos-list','position','e.g. AI Engineer')">+ Add Position</button>
+    <div class="btn-row">
+      <button class="btn btn-o" onclick="go(2)">← Back</button>
+      <button class="btn btn-p" onclick="savePositions()">Save & Continue →</button>
+    </div>
+  </div>
+
+  <!-- Step 4: Locations -->
+  <div class="sec" id="sec4">
+    <div class="stitle">Which locations should we search in?</div>
+    <div class="ssub">Add cities or states. "Remote" is always included automatically.</div>
+    <div class="tag-list" id="loc-list"></div>
+    <button class="add-btn" onclick="addTag('loc-list','location','e.g. Bangalore')">+ Add Location</button>
+    <div class="btn-row">
+      <button class="btn btn-o" onclick="go(3)">← Back</button>
+      <button class="btn btn-p" onclick="saveLocations()">Finish Setup →</button>
+    </div>
+  </div>
+
+  <!-- Done -->
+  <div class="sec" id="sec5">
+    <div class="done-icon">🎉</div>
+    <div class="done-title">You're all set!</div>
+    <div class="done-sub">Profile saved. Go to the dashboard to run the pipeline and start applying.</div>
+    <a href="/" class="btn btn-p" style="text-decoration:none">Go to Dashboard →</a>
+  </div>
+</div>
+
+<script>
+let currentStep = 1;
+const TOTAL = 4;
+
+function go(n) {
+  document.querySelectorAll('.sec').forEach((s,i) => s.classList.toggle('on', i+1===n));
+  document.querySelectorAll('.dot').forEach((d,i) => {
+    d.classList.toggle('on', i+1===n);
+    d.classList.toggle('done', i+1<n);
+  });
+  currentStep = n;
+}
+
+function alert_(msg, type='red') {
+  const el = document.getElementById('alert');
+  el.className = `alert alert-${type}`;
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display='none', 5000);
+}
+
+function drop(e) {
+  e.preventDefault();
+  document.getElementById('zone').classList.remove('drag');
+  uploadFile(e.dataTransfer.files[0]);
+}
+
+async function uploadFile(file) {
+  if (!file?.name.endsWith('.pdf')) { alert_('Please upload a PDF file'); return; }
+  document.getElementById('prog').style.display = 'block';
+  animProg();
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch('/api/setup/upload-resume', {method:'POST',body:fd});
+    const d = await r.json();
+    document.getElementById('pbar').style.width = '100%';
+    if (r.ok && d.status === 'ok') {
+      document.getElementById('p-name').textContent  = d.name  || '—';
+      document.getElementById('p-email').textContent = d.email || '—';
+      document.getElementById('p-skills').textContent = (d.skills||[]).slice(0,6).join(', ') || '—';
+      document.getElementById('p-roles').textContent  = (d.target_roles||[]).slice(0,4).join(', ') || '—';
+      document.getElementById('parsed').style.display = 'block';
+      document.getElementById('zone').style.borderColor = 'var(--grn)';
+      document.getElementById('btn1').disabled = false;
+      loadProfile();
+      loadPrefs(d.target_roles || []);
+    } else {
+      alert_('Parse failed — fill the form manually');
+      document.getElementById('btn1').disabled = false;
+    }
+  } catch(e) { alert_('Upload failed: ' + e.message); }
+}
+
+function animProg() {
+  let p = 0;
+  const bar = document.getElementById('pbar');
+  const t = setInterval(() => { p += Math.random()*15; if(p>85){clearInterval(t);return;} bar.style.width=p+'%'; }, 200);
+}
+
+async function loadProfile() {
+  try {
+    const r = await fetch('/api/profile/flat');
+    const d = await r.json();
+    document.querySelectorAll('#pform [name]').forEach(el => { if(d[el.name]) el.value=d[el.name]; });
+  } catch(e) {}
+}
+
+async function loadPrefs(targetRoles=[]) {
+  try {
+    const r = await fetch('/api/search-prefs');
+    const d = await r.json();
+    const pos = d.positions?.length ? d.positions : targetRoles;
+    const loc = d.locations?.length ? d.locations : [];
+    document.getElementById('pos-list').innerHTML = '';
+    document.getElementById('loc-list').innerHTML = '';
+    pos.forEach(p => addTag('pos-list','position','e.g. AI Engineer', p));
+    if (!pos.length) addTag('pos-list','position','e.g. AI Engineer');
+    loc.forEach(l => addTag('loc-list','location','e.g. Bangalore', l));
+    if (!loc.length) {
+      const city = document.querySelector('[name=location_city]')?.value || '';
+      if (city) addTag('loc-list','location','e.g. Bangalore', city);
+      addTag('loc-list','location','e.g. Bangalore','Remote');
+    }
+  } catch(e) {}
+}
+
+function addTag(listId, name, placeholder, value='') {
+  const list = document.getElementById(listId);
+  const row  = document.createElement('div');
+  row.className = 'tag-row';
+  row.innerHTML = `<input type="text" name="${name}" placeholder="${placeholder}" value="${value}"><button class="tag-rm" onclick="this.parentElement.remove()">✕</button>`;
+  list.appendChild(row);
+  if (!value) row.querySelector('input').focus();
+}
+
+function getTags(listId) {
+  return Array.from(document.querySelectorAll(`#${listId} input`)).map(e=>e.value.trim()).filter(Boolean);
+}
+
+async function saveProfile() {
+  const data = {};
+  document.querySelectorAll('#pform [name]').forEach(el => { if(el.name&&el.value.trim()) data[el.name]=el.value.trim(); });
+  if (!data.full_name||!data.email||!data.phone) { alert_('Please fill Name, Email, and Phone'); return; }
+  await fetch('/api/profile', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  await loadPrefs();
+  go(3);
+}
+
+async function savePositions() {
+  const positions = getTags('pos-list');
+  if (!positions.length) { alert_('Add at least one position'); return; }
+  await fetch('/api/search-prefs', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({positions})});
+  go(4);
+}
+
+async function saveLocations() {
+  const locations = getTags('loc-list');
+  if (!locations.length) { alert_('Add at least one location'); return; }
+  await fetch('/api/search-prefs', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({locations})});
+  go(5);
+}
+
+loadProfile();
+</script>
+</body>
+</html>
