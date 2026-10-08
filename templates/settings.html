@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Settings — Apex Job Agent</title>
+<style>
+:root{--bg:#09090f;--s1:#111320;--s2:#191d30;--s3:#202438;--acc:#6366f1;--acc2:#a5b4fc;--grn:#22c55e;--ylw:#f59e0b;--red:#ef4444;--txt:#e2e8f0;--mut:#94a3b8;--bdr:#252a45;--r:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif}
+nav{background:var(--s1);border-bottom:1px solid var(--bdr);height:60px;display:flex;align-items:center;padding:0 28px;gap:6px;position:sticky;top:0;z-index:100}
+.logo{font-weight:800;font-size:18px;background:linear-gradient(135deg,#e2e8f0,var(--acc2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-right:24px}
+nav a{color:var(--mut);text-decoration:none;padding:7px 14px;border-radius:9px;font-size:14px;transition:all .2s}
+nav a:hover,nav a.on{background:var(--s2);color:var(--txt)}
+.layout{display:grid;grid-template-columns:220px 1fr;min-height:calc(100vh - 60px)}
+.sidebar{background:var(--s1);border-right:1px solid var(--bdr);padding:20px 12px}
+.sidebar-title{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin-bottom:10px;padding:0 8px}
+.nav-item{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:9px;cursor:pointer;font-size:14px;color:var(--mut);transition:all .2s;margin-bottom:2px}
+.nav-item:hover{background:var(--s2);color:var(--txt)}
+.nav-item.on{background:var(--s2);color:var(--txt);font-weight:500}
+.nav-icon{font-size:16px;width:20px;text-align:center}
+.main{padding:32px 40px;max-width:760px}
+h1{font-size:22px;font-weight:700;margin-bottom:4px}
+.page-sub{color:var(--mut);font-size:13px;margin-bottom:28px}
+
+/* Sections */
+.section{display:none}.section.on{display:block}
+.section-title{font-size:16px;font-weight:600;margin-bottom:6px}
+.section-desc{font-size:13px;color:var(--mut);margin-bottom:20px;line-height:1.5}
+
+/* Provider cards */
+.provider-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:24px}
+.pcard{background:var(--s1);border:2px solid var(--bdr);border-radius:12px;padding:16px;cursor:pointer;transition:all .2s;text-align:center}
+.pcard:hover{border-color:var(--acc);transform:translateY(-1px)}
+.pcard.sel{border-color:var(--acc);background:rgba(99,102,241,.08)}
+.pcard-icon{font-size:28px;margin-bottom:8px}
+.pcard-name{font-size:13px;font-weight:600;margin-bottom:2px}
+.pcard-desc{font-size:11px;color:var(--mut)}
+.pcard-free{display:inline-block;font-size:10px;background:#052e16;color:#86efac;border-radius:20px;padding:1px 7px;margin-top:4px}
+
+/* Config box - shows when provider is selected */
+.provider-config{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:20px;margin-bottom:20px;display:none}
+.provider-config.on{display:block}
+.config-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.config-title{font-size:14px;font-weight:600}
+.config-link{font-size:12px;color:var(--acc2);text-decoration:none}
+.config-link:hover{text-decoration:underline}
+.field-group{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+label{font-size:12px;color:var(--mut);font-weight:500}
+.input-wrap{position:relative;display:flex}
+input,select{background:var(--s3);border:1px solid var(--bdr);border-radius:9px;padding:9px 13px;font-size:14px;color:var(--txt);width:100%;outline:none;font-family:inherit;transition:border-color .2s}
+input:focus,select:focus{border-color:var(--acc)}
+input[type=password]{padding-right:44px}
+.eye-btn{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--mut);cursor:pointer;font-size:16px;padding:0;line-height:1}
+.eye-btn:hover{color:var(--txt)}
+.hint{font-size:11px;color:var(--mut);margin-top:3px}
+
+/* Model chips */
+.model-grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.model-chip{padding:5px 12px;border-radius:20px;border:1px solid var(--bdr);background:var(--s3);color:var(--mut);font-size:12px;cursor:pointer;transition:all .15s}
+.model-chip:hover{border-color:var(--acc);color:var(--txt)}
+.model-chip.sel{border-color:var(--acc);background:rgba(99,102,241,.15);color:var(--acc2);font-weight:500}
+.model-custom-row{display:flex;gap:8px;margin-top:6px}
+.model-custom-row input{flex:1}
+
+/* Test button */
+.test-row{display:flex;gap:10px;align-items:center;margin-top:6px}
+.test-result{font-size:13px}
+.test-ok{color:var(--grn)}.test-err{color:var(--red)}
+
+/* Agent settings */
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+@media(max-width:560px){.settings-grid{grid-template-columns:1fr}}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--bdr)}
+.toggle-row:last-child{border-bottom:none}
+.toggle-info{flex:1}
+.toggle-label{font-size:14px;font-weight:500;margin-bottom:2px}
+.toggle-desc{font-size:12px;color:var(--mut)}
+.toggle{position:relative;width:44px;height:24px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:var(--s3);border-radius:24px;cursor:pointer;transition:.2s;border:1px solid var(--bdr)}
+.toggle-slider:before{content:'';position:absolute;height:16px;width:16px;left:3px;bottom:3px;background:var(--mut);border-radius:50%;transition:.2s}
+.toggle input:checked+.toggle-slider{background:var(--acc);border-color:var(--acc)}
+.toggle input:checked+.toggle-slider:before{transform:translateX(20px);background:#fff}
+
+/* Save bar */
+.save-bar{display:flex;gap:10px;align-items:center;margin-top:24px;padding-top:20px;border-top:1px solid var(--bdr)}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:9px 20px;border-radius:9px;font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all .2s}
+.btn-p{background:var(--acc);color:#fff}.btn-p:hover{background:#5254cc}
+.btn-o{background:transparent;border:1px solid var(--bdr);color:var(--txt)}
+.btn-o:hover{border-color:var(--acc);color:var(--acc2)}
+.btn-grn{background:#166534;color:#86efac;border:1px solid var(--grn)}
+.btn-grn:hover{background:#15803d}
+.save-msg{font-size:13px;color:var(--grn)}
+.save-err{font-size:13px;color:var(--red)}
+.sp{display:inline-block;width:13px;height:13px;border:2px solid transparent;border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.active-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(99,102,241,.15);border:1px solid var(--acc);color:var(--acc2);border-radius:20px;padding:3px 12px;font-size:12px;font-weight:500;margin-bottom:16px}
+.dot-on{width:7px;height:7px;border-radius:50%;background:var(--grn)}
+</style>
+</head>
+<body>
+<nav>
+  <span class="logo">⚡ Apex</span>
+  <a href="/">Dashboard</a>
+  <a href="/profile">Profile</a>
+  <a href="/jobs">Jobs</a>
+  <a href="/apply">Apply</a>
+  <a href="/tracking">Pipeline</a>
+  <a href="/settings" class="on">Settings</a>
+</nav>
+
+<div class="layout">
+  <!-- Sidebar nav -->
+  <div class="sidebar">
+    <div class="sidebar-title">Settings</div>
+    <div class="nav-item on" onclick="showSection('llm',this)">
+      <span class="nav-icon">🤖</span> LLM Provider
+    </div>
+    <div class="nav-item" onclick="showSection('agent',this)">
+      <span class="nav-icon">⚙️</span> Agent Behaviour
+    </div>
+    <div class="nav-item" onclick="showSection('browser',this)">
+      <span class="nav-icon">🌐</span> Browser
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="main">
+
+    <!-- ── LLM Section ── -->
+    <div class="section on" id="sec-llm">
+      <div class="section-title">LLM Provider</div>
+      <div class="section-desc">Choose your AI provider and enter your API key. Keys are stored locally in your database — never sent anywhere except directly to the provider you choose.</div>
+
+      <div id="active-provider-badge" class="active-badge" style="display:none">
+        <span class="dot-on"></span>
+        <span id="active-provider-text">loading...</span>
+      </div>
+
+      <!-- Provider cards -->
+      <div class="provider-grid" id="provider-grid">
+        <!-- filled by JS -->
+      </div>
+
+      <!-- Config box - changes based on selected provider -->
+      <div class="provider-config" id="provider-config">
+        <div class="config-header">
+          <span class="config-title" id="config-title">Provider Config</span>
+          <a class="config-link" id="config-link" href="#" target="_blank">Get API Key ↗</a>
+        </div>
+        <div id="config-fields"><!-- filled by JS --></div>
+        <div class="test-row">
+          <button class="btn btn-grn" onclick="testLLM()">⚡ Test Connection</button>
+          <span id="test-result" class="test-result"></span>
+        </div>
+      </div>
+
+      <!-- Temperature -->
+      <div class="field-group">
+        <label>Temperature <span style="color:var(--mut);font-weight:400">(0.0 = deterministic, 1.0 = creative)</span></label>
+        <input type="range" id="temp-range" min="0" max="1" step="0.05" value="0.1"
+               oninput="document.getElementById('temp-val').textContent=this.value"
+               style="background:transparent;border:none;padding:4px 0;cursor:pointer">
+        <span id="temp-val" style="font-size:13px;color:var(--acc2)">0.1</span>
+      </div>
+
+      <div class="save-bar">
+        <button class="btn btn-p" onclick="saveLLM()">💾 Save LLM Settings</button>
+        <span id="llm-save-msg"></span>
+      </div>
+    </div>
+
+    <!-- ── Agent Section ── -->
+    <div class="section" id="sec-agent">
+      <div class="section-title">Agent Behaviour</div>
+      <div class="section-desc">Control how the agent searches and applies. Changes take effect immediately.</div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-label">Dry Run Mode</div>
+          <div class="toggle-desc">Search and score jobs but don't actually apply to anything. Good for testing.</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="dry-run"><span class="toggle-slider"></span></label>
+      </div>
+
+      <div style="height:16px"></div>
+      <div class="settings-grid">
+        <div class="field-group">
+          <label>Daily Apply Limit</label>
+          <input type="number" id="daily-limit" min="1" max="200" value="30">
+          <span class="hint">Max applications per pipeline run</span>
+        </div>
+        <div class="field-group">
+          <label>Auto-Skip Score Threshold</label>
+          <input type="number" id="skip-threshold" min="0" max="100" value="30">
+          <span class="hint">Jobs scoring below this are auto-skipped (0 = keep all)</span>
+        </div>
+        <div class="field-group">
+          <label>Min Delay Between Applies (seconds)</label>
+          <input type="number" id="min-delay" min="10" max="600" value="45">
+        </div>
+        <div class="field-group">
+          <label>Max Delay Between Applies (seconds)</label>
+          <input type="number" id="max-delay" min="30" max="600" value="120">
+        </div>
+      </div>
+
+      <div class="save-bar">
+        <button class="btn btn-p" onclick="saveAgent()">💾 Save Agent Settings</button>
+        <span id="agent-save-msg"></span>
+      </div>
+    </div>
+
+    <!-- ── Browser Section ── -->
+    <div class="section" id="sec-browser">
+      <div class="section-title">Browser Settings</div>
+      <div class="section-desc">Opera browser configuration. Close Opera completely before running the agent.</div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-label">Headless Mode</div>
+          <div class="toggle-desc">Run browser invisibly in the background. Disable to see what the agent is doing.</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="headless"><span class="toggle-slider"></span></label>
+      </div>
+
+      <div style="height:16px"></div>
+      <div class="field-group">
+        <label>Slow Mo (milliseconds)</label>
+        <input type="number" id="slow-mo" min="0" max="500" value="60">
+        <span class="hint">Delay between browser actions. Higher = more human-like, slower.</span>
+      </div>
+
+      <div class="save-bar">
+        <button class="btn btn-p" onclick="saveBrowser()">💾 Save Browser Settings</button>
+        <span id="browser-save-msg"></span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let providers   = {};    // from /api/settings/providers
+let settings    = {};    // from /api/settings
+let activeProvider = 'mistral';
+let selectedModel  = '';
+let customModel    = '';
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  const [pr, sr] = await Promise.all([
+    fetch('/api/settings/providers').then(r => r.json()),
+    fetch('/api/settings').then(r => r.json()),
+  ]);
+  providers = pr;
+  settings  = sr.settings || {};
+
+  activeProvider = settings.llm_provider || 'mistral';
+  document.getElementById('temp-range').value = settings.llm_temperature || '0.1';
+  document.getElementById('temp-val').textContent  = settings.llm_temperature || '0.1';
+
+  // Active badge
+  const badge = document.getElementById('active-provider-badge');
+  badge.style.display = 'inline-flex';
+  document.getElementById('active-provider-text').textContent =
+    `${sr.provider_info?.provider} / ${sr.provider_info?.model}`;
+
+  buildProviderGrid();
+  selectProvider(activeProvider, false);
+  loadAgentSettings();
+  loadBrowserSettings();
+}
+
+// ── Section nav ───────────────────────────────────────────────────────────────
+function showSection(name, el) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('on'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('on'));
+  document.getElementById('sec-' + name).classList.add('on');
+  el.classList.add('on');
+}
+
+// ── Provider grid ─────────────────────────────────────────────────────────────
+function buildProviderGrid() {
+  const icons = {
+    mistral:    '🟠', nvidia:   '🟢', openrouter: '🟣',
+    gemini:     '🔵', ollama:   '💻', anthropic:  '🟤', openai: '⚫',
+  };
+  const free = { ollama: true, openrouter: true };
+
+  document.getElementById('provider-grid').innerHTML = Object.entries(providers)
+    .map(([key, p]) => `
+      <div class="pcard ${key === activeProvider ? 'sel' : ''}"
+           id="pcard-${key}" onclick="selectProvider('${key}', true)">
+        <div class="pcard-icon">${icons[key] || '🤖'}</div>
+        <div class="pcard-name">${p.label}</div>
+        <div class="pcard-desc">${key === 'ollama' ? 'Local, no API key' : 'Cloud API'}</div>
+        ${free[key] ? '<span class="pcard-free">Free tier</span>' : ''}
+      </div>`).join('');
+}
+
+// ── Select provider → show config fields ─────────────────────────────────────
+function selectProvider(key, userClicked) {
+  activeProvider = key;
+
+  // Update card selection
+  document.querySelectorAll('.pcard').forEach(c => c.classList.remove('sel'));
+  document.getElementById('pcard-' + key)?.classList.add('sel');
+
+  const p = providers[key];
+  if (!p) return;
+
+  // Show config box
+  const box = document.getElementById('provider-config');
+  box.classList.add('on');
+  document.getElementById('config-title').textContent = p.label + ' Configuration';
+  const link = document.getElementById('config-link');
+  link.href = p.url || '#';
+  link.textContent = p.key_label ? `Get ${p.key_label} ↗` : 'Documentation ↗';
+
+  // Current model for this provider
+  const modelKey  = Object.keys(providers).find(k => k === key);
+  const modelSetting = key + '_model';
+  selectedModel = settings[modelSetting] || p.models[0] || '';
+
+  // Build fields
+  let html = '';
+
+  // API Key field (not for Ollama)
+  if (p.key_label) {
+    const keyName  = key + '_api_key';
+    const keyValue = settings[keyName] || '';
+    html += `
+      <div class="field-group">
+        <label>${p.key_label}</label>
+        <div class="input-wrap">
+          <input type="password" id="field-${keyName}" name="${keyName}"
+                 value="${keyValue}"
+                 placeholder="Enter your ${p.key_label}">
+          <button class="eye-btn" onclick="toggleEye('field-${keyName}', this)">👁</button>
+        </div>
+        <span class="hint">Stored locally in your database. Never sent anywhere except ${p.label}.</span>
+      </div>`;
+  }
+
+  // Base URL (for providers that support it)
+  const baseUrlProviders = ['nvidia', 'ollama', 'openai', 'openrouter'];
+  if (baseUrlProviders.includes(key)) {
+    const buKey = key + '_base_url';
+    const buVal = settings[buKey] || p.base_url || '';
+    html += `
+      <div class="field-group">
+        <label>Base URL</label>
+        <input type="text" id="field-${buKey}" name="${buKey}" value="${buVal}">
+      </div>`;
+  }
+
+  // Model selector
+  html += `
+    <div class="field-group">
+      <label>Model</label>
+      <div class="model-grid" id="model-chips">
+        ${p.models.map(m => `
+          <div class="model-chip ${m === selectedModel ? 'sel' : ''}"
+               onclick="pickModel('${key}', '${m}', this)">${m}</div>`).join('')}
+      </div>
+      <div class="model-custom-row">
+        <input type="text" id="custom-model-input"
+               placeholder="Or type a custom model name…"
+               value="${p.models.includes(selectedModel) ? '' : selectedModel}"
+               oninput="customModel=this.value">
+        <button class="btn btn-o" style="font-size:12px;padding:7px 12px;flex-shrink:0"
+                onclick="useCustomModel('${key}')">Use</button>
+      </div>
+    </div>`;
+
+  document.getElementById('config-fields').innerHTML = html;
+}
+
+function pickModel(providerKey, model, el) {
+  selectedModel = model;
+  customModel   = '';
+  document.getElementById('custom-model-input').value = '';
+  document.querySelectorAll('#model-chips .model-chip').forEach(c => c.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+function useCustomModel(providerKey) {
+  const val = document.getElementById('custom-model-input').value.trim();
+  if (!val) return;
+  selectedModel = val;
+  customModel   = val;
+  document.querySelectorAll('#model-chips .model-chip').forEach(c => c.classList.remove('sel'));
+}
+
+function toggleEye(inputId, btn) {
+  const el = document.getElementById(inputId);
+  if (el.type === 'password') { el.type = 'text';     btn.textContent = '🙈'; }
+  else                        { el.type = 'password'; btn.textContent = '👁';  }
+}
+
+// ── Save LLM ──────────────────────────────────────────────────────────────────
+async function saveLLM() {
+  const msg = document.getElementById('llm-save-msg');
+  msg.textContent = '';
+
+  const updates = {
+    llm_provider:   activeProvider,
+    llm_temperature: document.getElementById('temp-range').value,
+  };
+
+  // Collect all visible input fields in config box
+  document.querySelectorAll('#config-fields input, #config-fields select').forEach(el => {
+    if (el.name && el.value.trim()) {
+      updates[el.name] = el.value.trim();
+    }
+  });
+
+  // Save active provider's model
+  updates[activeProvider + '_model'] = selectedModel || customModel;
+
+  try {
+    const r = await fetch('/api/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(updates),
+    });
+    const d = await r.json();
+    if (r.ok) {
+      msg.className = 'save-msg';
+      msg.textContent = `✓ Saved — Active: ${d.provider_info?.provider} / ${d.provider_info?.model}`;
+      // Update badge
+      document.getElementById('active-provider-text').textContent =
+        `${d.provider_info?.provider} / ${d.provider_info?.model}`;
+      settings = {...settings, ...updates};
+    } else {
+      msg.className = 'save-err'; msg.textContent = '✗ Save failed';
+    }
+  } catch(e) {
+    msg.className = 'save-err'; msg.textContent = '✗ ' + e.message;
+  }
+  setTimeout(() => msg.textContent = '', 4000);
+}
+
+// ── Test LLM ─────────────────────────────────────────────────────────────────
+async function testLLM() {
+  // Save first, then test
+  await saveLLM();
+
+  const el = document.getElementById('test-result');
+  el.textContent = '';
+  el.className   = 'test-result';
+
+  // Show spinner
+  el.innerHTML = '<span class="sp"></span> Testing…';
+
+  try {
+    const r = await fetch('/api/settings/test-llm', { method: 'POST' });
+    const d = await r.json();
+    if (r.ok && d.status === 'ok') {
+      el.className   = 'test-result test-ok';
+      el.textContent = `✓ Connected — ${d.provider}/${d.model} replied: "${d.response}"`;
+    } else {
+      el.className   = 'test-result test-err';
+      el.textContent = `✗ Failed: ${d.error}`;
+    }
+  } catch(e) {
+    el.className   = 'test-result test-err';
+    el.textContent = '✗ Request failed: ' + e.message;
+  }
+}
+
+// ── Agent settings ────────────────────────────────────────────────────────────
+function loadAgentSettings() {
+  document.getElementById('dry-run').checked     = settings.dry_run === 'true';
+  document.getElementById('daily-limit').value   = settings.daily_apply_limit          || '30';
+  document.getElementById('skip-threshold').value= settings.auto_skip_score_threshold  || '30';
+  document.getElementById('min-delay').value     = settings.min_delay_between_applies  || '45';
+  document.getElementById('max-delay').value     = settings.max_delay_between_applies  || '120';
+}
+
+async function saveAgent() {
+  const msg = document.getElementById('agent-save-msg');
+  const updates = {
+    dry_run:                   String(document.getElementById('dry-run').checked),
+    daily_apply_limit:         document.getElementById('daily-limit').value,
+    auto_skip_score_threshold: document.getElementById('skip-threshold').value,
+    min_delay_between_applies: document.getElementById('min-delay').value,
+    max_delay_between_applies: document.getElementById('max-delay').value,
+  };
+  const r = await fetch('/api/settings', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(updates),
+  });
+  if (r.ok) {
+    msg.className = 'save-msg'; msg.textContent = '✓ Saved';
+    settings = {...settings, ...updates};
+  } else {
+    msg.className = 'save-err'; msg.textContent = '✗ Failed';
+  }
+  setTimeout(() => msg.textContent = '', 3000);
+}
+
+// ── Browser settings ──────────────────────────────────────────────────────────
+function loadBrowserSettings() {
+  document.getElementById('headless').checked  = settings.browser_headless === 'true';
+  document.getElementById('slow-mo').value     = settings.browser_slow_mo   || '60';
+}
+
+async function saveBrowser() {
+  const msg = document.getElementById('browser-save-msg');
+  const updates = {
+    browser_headless: String(document.getElementById('headless').checked),
+    browser_slow_mo:  document.getElementById('slow-mo').value,
+  };
+  const r = await fetch('/api/settings', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(updates),
+  });
+  if (r.ok) {
+    msg.className = 'save-msg'; msg.textContent = '✓ Saved';
+  } else {
+    msg.className = 'save-err'; msg.textContent = '✗ Failed';
+  }
+  setTimeout(() => msg.textContent = '', 3000);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

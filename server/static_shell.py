@@ -1,0 +1,65 @@
+"""
+server/static_shell.py — which URLs belong to the Next.js app's static export.
+
+Pure path logic with no FastAPI import, so it's unit-testable on its own
+(tests/test_static_shell.py).
+
+Why this exists: the auth gate (server/app.py) blocks every URL without a
+session. But the login screen is part of the Next app itself, so the app's
+static files — HTML shells, JS, CSS — must load for a logged-out visitor.
+Rather than a hand-maintained allow-list of page routes (which silently breaks
+the day someone adds a page), a URL is public exactly when it maps to a real
+file inside the exported build directory. Those files contain no user data;
+everything with data is under /api/ and still needs a session. Anything the
+export doesn't contain — /apply, /tracking, /screenshots, /docs — stays
+protected by default.
+"""
+
+from pathlib import Path
+
+# Always public: the auth endpoints themselves, the legacy static dir, and
+# /login (a redirect kept for old bookmarks — see server/routes/auth.py).
+PUBLIC_EXACT    = {"/login", "/favicon.ico"}
+PUBLIC_PREFIXES = ("/api/auth/", "/static/")
+
+# The pages the Next app owns. Only used for the DEV redirect (when there is no
+# build to serve, the backend sends these to the Next dev server). Production
+# doesn't depend on this list — it goes by which files exist in the export.
+SHELL_ROUTES = ("/", "/jobs", "/profile", "/settings")
+
+
+def normalize(path: str) -> str:
+    """'/jobs/' → '/jobs', '//' → '/'"""
+    stripped = path.strip("/")
+    return "/" + stripped if stripped else "/"
+
+
+def resolve_static_file(ui_dir: Path, url_path: str) -> Path | None:
+    """
+    The file inside ui_dir that would serve url_path, or None.
+
+    Mirrors what Starlette's StaticFiles(html=True) will serve (the file
+    itself, dir/index.html, or a bare .html), and — the security-relevant
+    part — NEVER returns a path outside ui_dir, however the URL is written
+    (../ segments, symlinks, absolute-looking paths, NUL bytes).
+    """
+    try:
+        root = ui_dir.resolve()
+        rel = url_path.strip("/")
+        candidates = [rel, f"{rel}/index.html" if rel else "index.html", f"{rel}.html"] if rel \
+            else ["index.html"]
+        for cand in candidates:
+            p = (root / cand).resolve()
+            if p.is_relative_to(root) and p.is_file():
+                return p
+    except (ValueError, OSError):
+        pass
+    return None
+
+
+def is_public_path(path: str, ui_dir: Path | None) -> bool:
+    if path in PUBLIC_EXACT or path.startswith(PUBLIC_PREFIXES):
+        return True
+    if normalize(path) in SHELL_ROUTES:
+        return True
+    return ui_dir is not None and resolve_static_file(ui_dir, path) is not None

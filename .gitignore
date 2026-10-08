@@ -1,0 +1,60 @@
+# ============================================================
+# Apex Job Agent — .gitignore
+#
+# Added per security audit finding: this project previously had
+# NO .gitignore at all, meaning the following would be committed
+# verbatim to any git repo:
+#   - data/settings.db   (contains your LLM provider API keys)
+#   - data/cookies/*.json (live LinkedIn/Indeed session cookies —
+#                          equivalent to your logged-in session)
+#   - resume.pdf / cover_letter.pdf (personal PII)
+#   - data/profile.db    (personal data used for form-filling)
+#   - data/jobs.db       (scraped job data, may include your
+#                          application history)
+#   - logs/*.log         (may contain job titles, companies,
+#                          partial form field values, errors with
+#                          stack traces referencing local paths)
+#
+# If any of these were ever committed to a repo before this
+# .gitignore was added, treat the credentials/cookies in them as
+# COMPROMISED: rotate API keys and log out + log back in to
+# LinkedIn/Indeed to invalidate the leaked session cookies.
+# ============================================================
+
+# Environment / secrets
+.env
+*.env.local
+
+# Runtime data — DBs, cookies, sessions, screenshots
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Personal documents
+resume.pdf
+cover_letter.pdf
+*.pdf
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+frontend/node_modules/
+frontend/.next/
+frontend/out/

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Profile — Apex Job Agent</title>
+<style>
+:root{--bg:#09090f;--s1:#111320;--s2:#191d30;--s3:#202438;--acc:#6366f1;--acc2:#a5b4fc;--grn:#22c55e;--ylw:#f59e0b;--red:#ef4444;--txt:#e2e8f0;--mut:#94a3b8;--bdr:#252a45;--r:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif}
+nav{background:var(--s1);border-bottom:1px solid var(--bdr);height:60px;display:flex;align-items:center;padding:0 28px;gap:6px;position:sticky;top:0;z-index:100}
+.logo{font-weight:800;font-size:18px;background:linear-gradient(135deg,#e2e8f0,var(--acc2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-right:24px}
+nav a{color:var(--mut);text-decoration:none;padding:7px 14px;border-radius:9px;font-size:14px;transition:all .2s}
+nav a:hover,nav a.on{background:var(--s2);color:var(--txt)}
+.container{max-width:860px;margin:0 auto;padding:28px 24px}
+h1{font-size:22px;font-weight:700;margin-bottom:4px}
+.sub{color:var(--mut);font-size:13px;margin-bottom:24px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--bdr);margin-bottom:22px}
+.tab{padding:9px 16px;cursor:pointer;font-size:13px;color:var(--mut);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .2s}
+.tab.on{color:var(--acc2);border-bottom-color:var(--acc)}
+.pane{display:none}.pane.on{display:block}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){.grid{grid-template-columns:1fr}}
+.full{grid-column:1/-1}
+.fg{display:flex;flex-direction:column;gap:5px}
+label{font-size:11px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+input,select,textarea{background:var(--s3);border:1px solid var(--bdr);border-radius:9px;padding:9px 13px;font-size:14px;color:var(--txt);width:100%;outline:none;font-family:inherit;transition:border-color .2s}
+input:focus,select:focus,textarea:focus{border-color:var(--acc)}
+textarea{min-height:100px;resize:vertical}
+.save-row{display:flex;gap:10px;align-items:center;margin-top:22px;padding-top:18px;border-top:1px solid var(--bdr)}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:9px 20px;border-radius:9px;font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all .2s}
+.btn-p{background:var(--acc);color:#fff}.btn-p:hover{background:#5254cc}
+.btn-o{background:transparent;border:1px solid var(--bdr);color:var(--txt)}
+.btn-o:hover{border-color:var(--acc);color:var(--acc2)}
+#save-msg{font-size:13px;color:var(--grn)}
+.slbl{font-size:13px;font-weight:600;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--bdr);color:var(--txt)}
+</style>
+</head>
+<body>
+<nav>
+  <span class="logo">⚡ Apex</span>
+  <a href="/">Dashboard</a><a href="/profile" class="on">Profile</a>
+  <a href="/jobs">Jobs</a><a href="/apply">Apply</a><a href="/tracking">Pipeline</a>
+  <a href="/settings">Settings</a>
+</nav>
+<div class="container">
+  <h1>Your Profile</h1>
+  <p class="sub">All data here auto-fills job application forms. The more complete, the fewer manual prompts during applications.</p>
+  <div style="display:flex;gap:10px;margin-bottom:20px">
+    <button class="btn btn-o" onclick="reimport()">📄 Re-import Resume</button>
+  </div>
+  <div class="tabs">
+    <div class="tab on" onclick="sw('personal',this)">Personal</div>
+    <div class="tab" onclick="sw('professional',this)">Professional</div>
+    <div class="tab" onclick="sw('education',this)">Education</div>
+    <div class="tab" onclick="sw('identity',this)">Identity</div>
+    <div class="tab" onclick="sw('search',this)">Search Prefs</div>
+  </div>
+
+  <form id="pf" onsubmit="return false">
+    <div class="pane on" id="pane-personal">
+      <div class="slbl">Personal Information</div>
+      <div class="grid">
+        <div class="fg"><label>Full Name *</label><input name="full_name" placeholder="Archit Aggarwal"></div>
+        <div class="fg"><label>First Name</label><input name="first_name" placeholder="Archit"></div>
+        <div class="fg"><label>Last Name</label><input name="last_name" placeholder="Aggarwal"></div>
+        <div class="fg"><label>Email *</label><input name="email" type="email" placeholder="you@example.com"></div>
+        <div class="fg"><label>Phone *</label><input name="phone" placeholder="+91 98765 43210"></div>
+        <div class="fg"><label>Alternate Phone</label><input name="phone_alternate"></div>
+        <div class="fg"><label>Date of Birth</label><input name="date_of_birth" placeholder="DD/MM/YYYY"></div>
+        <div class="fg"><label>Gender</label>
+          <select name="gender"><option value="">—</option><option>Male</option><option>Female</option><option>Non-binary</option><option>Prefer not to say</option></select>
+        </div>
+        <div class="fg"><label>Nationality</label><input name="nationality" value="Indian"></div>
+        <div class="fg"><label>City</label><input name="location_city" placeholder="Delhi"></div>
+        <div class="fg"><label>State</label><input name="location_state" placeholder="Delhi"></div>
+        <div class="fg"><label>Country</label><input name="location_country" value="India"></div>
+        <div class="fg"><label>PIN Code</label><input name="location_pincode" placeholder="110001"></div>
+        <div class="fg"><label>LinkedIn URL</label><input name="linkedin_url" placeholder="https://linkedin.com/in/..."></div>
+        <div class="fg"><label>GitHub URL</label><input name="github_url" placeholder="https://github.com/..."></div>
+        <div class="fg"><label>Portfolio URL</label><input name="portfolio_url"></div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-professional">
+      <div class="slbl">Professional Details</div>
+      <div class="grid">
+        <div class="fg"><label>Current Title</label><input name="current_role" placeholder="AI Engineer"></div>
+        <div class="fg"><label>Experience (years)</label><input name="experience_years" type="number" value="0" min="0" step="0.5"></div>
+        <div class="fg"><label>Notice Period (days)</label><input name="notice_period_days" type="number" value="0"></div>
+        <div class="fg"><label>Notice Period (label)</label><input name="notice_period_label" placeholder="Immediate"></div>
+        <div class="fg"><label>Current CTC (LPA)</label><input name="current_ctc_lpa" type="number" step="0.1" placeholder="8"></div>
+        <div class="fg"><label>Expected CTC (LPA)</label><input name="expected_ctc_lpa" type="number" step="0.1" placeholder="12"></div>
+        <div class="fg"><label>Current CTC Monthly (₹)</label><input name="current_ctc_monthly" type="number"></div>
+        <div class="fg"><label>Expected CTC Monthly (₹)</label><input name="expected_ctc_monthly" type="number"></div>
+        <div class="fg"><label>Salary (free text)</label><input name="salary_expectation" placeholder="Open to discussion"></div>
+        <div class="fg"><label>Willing to Relocate?</label><select name="willing_to_relocate"><option>Yes</option><option>No</option><option>Maybe</option></select></div>
+        <div class="fg"><label>Work Mode</label><select name="work_mode_preference"><option>Hybrid</option><option>Remote</option><option>Onsite</option><option>Any</option></select></div>
+        <div class="fg"><label>Available to Join</label><input name="availability" placeholder="Immediately"></div>
+        <div class="fg full"><label>Default Cover Letter / Summary</label><textarea name="cover_letter" placeholder="Write a professional summary or default cover letter…"></textarea></div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-education">
+      <div class="slbl">Education</div>
+      <div class="grid">
+        <div class="fg"><label>Highest Degree</label><input name="highest_degree" placeholder="B.Tech"></div>
+        <div class="fg"><label>Field of Study</label><input name="degree_field" placeholder="Computer Science"></div>
+        <div class="fg"><label>University / College</label><input name="university_name" placeholder="IIT Delhi"></div>
+        <div class="fg"><label>Graduation Year</label><input name="graduation_year" placeholder="2024"></div>
+        <div class="fg"><label>CGPA / Percentage</label><input name="graduation_score" placeholder="8.5 / 85%"></div>
+        <div class="fg"><label>10th Percentage</label><input name="tenth_score" placeholder="90%"></div>
+        <div class="fg"><label>12th Percentage</label><input name="twelfth_score" placeholder="88%"></div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-identity">
+      <div class="slbl">Identity &amp; Compliance (EEO forms)</div>
+      <div class="grid">
+        <div class="fg"><label>Authorized to Work in India?</label><select name="authorized_to_work"><option>Yes</option><option>No</option></select></div>
+        <div class="fg"><label>Require Visa Sponsorship?</label><select name="require_sponsorship"><option>No</option><option>Yes</option></select></div>
+        <div class="fg"><label>Veteran Status</label><select name="veteran_status"><option>No</option><option>Yes</option><option>Prefer not to say</option></select></div>
+        <div class="fg"><label>Disability Status</label><select name="disability_status"><option>No</option><option>Yes</option><option>Prefer not to say</option></select></div>
+        <div class="fg"><label>Ethnicity (optional)</label><input name="ethnicity" placeholder="Prefer not to say"></div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-search">
+      <div class="slbl">Search Preferences</div>
+      <div style="margin-bottom:16px">
+        <label style="margin-bottom:10px;display:block">Job Positions to Search</label>
+        <div id="pos-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px"></div>
+        <button type="button" class="btn btn-o" style="width:100%;justify-content:center" onclick="addTag('pos-list','position','e.g. AI Engineer')">+ Add Position</button>
+      </div>
+      <div>
+        <label style="margin-bottom:10px;display:block">Locations to Search</label>
+        <div id="loc-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px"></div>
+        <button type="button" class="btn btn-o" style="width:100%;justify-content:center" onclick="addTag('loc-list','location','e.g. Bangalore')">+ Add Location</button>
+      </div>
+    </div>
+
+    <div class="save-row">
+      <button type="button" class="btn btn-p" onclick="save()">💾 Save Profile</button>
+      <span id="save-msg"></span>
+    </div>
+  </form>
+</div>
+
+<script>
+function sw(name,el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('pane-'+name).classList.add('on');
+}
+
+function addTag(listId,name,placeholder,value=''){
+  const list=document.getElementById(listId);
+  const row=document.createElement('div');
+  row.style.cssText='display:flex;gap:8px;align-items:center';
+  row.innerHTML=`<input type="text" name="${name}" placeholder="${placeholder}" value="${value}" style="flex:1"><button type="button" onclick="this.parentElement.remove()" style="background:transparent;border:1px solid var(--bdr);color:var(--mut);border-radius:7px;padding:8px 10px;cursor:pointer;flex-shrink:0">✕</button>`;
+  list.appendChild(row);
+  if(!value)row.querySelector('input').focus();
+}
+
+function getTags(listId){return Array.from(document.querySelectorAll(`#${listId} input`)).map(e=>e.value.trim()).filter(Boolean);}
+
+async function loadProfile(){
+  try{
+    const [pr, sr] = await Promise.all([fetch('/api/profile/flat'),fetch('/api/search-prefs')]);
+    const p=await pr.json(), s=await sr.json();
+    document.querySelectorAll('#pf input,#pf select,#pf textarea').forEach(el=>{if(el.name&&p[el.name]!==undefined)el.value=p[el.name];});
+    document.getElementById('pos-list').innerHTML='';
+    document.getElementById('loc-list').innerHTML='';
+    (s.positions||[]).forEach(v=>addTag('pos-list','position','e.g. AI Engineer',v));
+    (s.locations||[]).forEach(v=>addTag('loc-list','location','e.g. Bangalore',v));
+    if(!(s.positions||[]).length)addTag('pos-list','position','e.g. AI Engineer');
+    if(!(s.locations||[]).length)addTag('loc-list','location','e.g. Bangalore');
+  }catch(e){}
+}
+
+async function save(){
+  const data={};
+  document.querySelectorAll('#pf input,#pf select,#pf textarea').forEach(el=>{if(el.name&&!['position','location'].includes(el.name))data[el.name]=el.value;});
+  await fetch('/api/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  await fetch('/api/search-prefs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({positions:getTags('pos-list'),locations:getTags('loc-list')})});
+  const m=document.getElementById('save-msg'); m.textContent='✓ Saved'; setTimeout(()=>m.textContent='',3000);
+}
+
+async function reimport(){
+  if(!confirm('Re-import data from resume.pdf? This will overwrite parsed fields.'))return;
+  const fd=new FormData();
+  const r=await fetch('/api/setup/upload-resume',{method:'POST',body:fd});
+  if(r.ok){loadProfile();alert('✓ Imported');}
+  else alert('Import failed — make sure resume.pdf is in the project folder');
+}
+
+loadProfile();
+</script>
+</body>
+</html>

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard — Apex Job Agent</title>
+<style>
+:root{--bg:#09090f;--s1:#111320;--s2:#191d30;--s3:#202438;--acc:#6366f1;--acc2:#a5b4fc;--grn:#22c55e;--ylw:#f59e0b;--red:#ef4444;--txt:#e2e8f0;--mut:#94a3b8;--bdr:#252a45;--r:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif}
+nav{background:var(--s1);border-bottom:1px solid var(--bdr);height:60px;display:flex;align-items:center;padding:0 28px;gap:6px;position:sticky;top:0;z-index:100}
+.logo{font-weight:800;font-size:18px;background:linear-gradient(135deg,#e2e8f0,var(--acc2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-right:24px}
+nav a{color:var(--mut);text-decoration:none;padding:7px 14px;border-radius:9px;font-size:14px;transition:all .2s}
+nav a:hover,nav a.on{background:var(--s2);color:var(--txt)}
+.container{max-width:1280px;margin:0 auto;padding:32px 24px}
+h1{font-size:26px;font-weight:700;margin-bottom:4px}
+.sub{color:var(--mut);font-size:14px;margin-bottom:28px;display:flex;align-items:center;gap:12px}
+.badge-sm{font-size:11px;background:var(--s2);border:1px solid var(--bdr);border-radius:20px;padding:2px 10px;color:var(--mut)}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:28px}
+.stat{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:20px}
+.stat-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin-bottom:8px}
+.stat-val{font-size:34px;font-weight:700}
+.c-acc{color:var(--acc2)}.c-grn{color:var(--grn)}.c-ylw{color:var(--ylw)}.c-red{color:var(--red)}
+.alert-box{padding:12px 16px;border-radius:10px;font-size:14px;margin-bottom:20px;display:none;align-items:center;gap:10px}
+.alert-ylw{background:#451a03;border:1px solid #92400e;color:#fde68a}
+.action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:28px}
+.action{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);padding:20px;cursor:pointer;transition:all .2s;text-decoration:none;color:inherit;display:block}
+.action:hover{border-color:var(--acc);transform:translateY(-2px);box-shadow:0 8px 32px rgba(99,102,241,.15)}
+.action-icon{font-size:28px;margin-bottom:10px}
+.action-title{font-size:14px;font-weight:600;margin-bottom:3px}
+.action-desc{font-size:12px;color:var(--mut)}
+.card{background:var(--s1);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:20px}
+.card-head{padding:14px 20px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:600}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:9px 16px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);border-bottom:1px solid var(--bdr)}
+td{padding:10px 16px;border-bottom:1px solid var(--bdr);font-size:13px}
+tr:hover td{background:var(--s2)}
+.badge{display:inline-flex;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600}
+.b-done{background:#052e16;color:#86efac}.b-wait{background:#3b2002;color:#fde68a}
+.b-rev{background:#0c1f3f;color:#93c5fd}.b-fill{background:#1e0a38;color:#d8b4fe}
+.b-idle{background:var(--s3);color:var(--mut)}.b-fail{background:#3b0e0e;color:#fca5a5}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 16px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .2s;text-decoration:none}
+.btn-p{background:var(--acc);color:#fff}.btn-p:hover{background:#5254cc}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-o{background:transparent;border:1px solid var(--bdr);color:var(--txt)}
+.btn-o:hover{border-color:var(--acc);color:var(--acc2)}
+.sp{display:inline-block;width:13px;height:13px;border:2px solid transparent;border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pipeline-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;padding:16px}
+.pipe-stage{background:var(--s2);border:1px solid var(--bdr);border-radius:10px;padding:12px;text-align:center}
+.pipe-stage-n{font-size:24px;font-weight:700;color:var(--acc2)}
+.pipe-stage-l{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-top:4px}
+</style>
+</head>
+<body>
+<nav>
+  <span class="logo">⚡ Apex</span>
+  <a href="/" class="on">Dashboard</a>
+  <a href="/profile">Profile</a>
+  <a href="/jobs">Jobs</a>
+  <a href="/apply">Apply</a>
+  <a href="/tracking">Pipeline</a>
+  <a href="/settings">Settings</a>
+</nav>
+<div class="container">
+  <h1>Dashboard</h1>
+  <div class="sub">
+    Autonomous job application agent
+    <span class="badge-sm" id="llm-badge">loading...</span>
+    <span class="badge-sm" id="dry-badge" style="display:none">DRY RUN</span>
+  </div>
+
+  <div id="await-alert" class="alert-box alert-ylw">
+    ⚠️ <strong id="await-n">0</strong> application(s) need your input.
+    <a href="/apply" style="color:var(--ylw);margin-left:8px;font-weight:700">Fill them →</a>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat"><div class="stat-lbl">Total Jobs</div><div class="stat-val c-acc" id="s-total">—</div></div>
+    <div class="stat"><div class="stat-lbl">Applied</div><div class="stat-val c-grn" id="s-applied">—</div></div>
+    <div class="stat"><div class="stat-lbl">Avg AI Score</div><div class="stat-val c-acc" id="s-score">—</div></div>
+    <div class="stat"><div class="stat-lbl">Awaiting Input</div><div class="stat-val c-ylw" id="s-await">—</div></div>
+    <div class="stat"><div class="stat-lbl">Pending Review</div><div class="stat-val c-acc" id="s-rev">—</div></div>
+    <div class="stat"><div class="stat-lbl">Errors</div><div class="stat-val c-red" id="s-err">—</div></div>
+  </div>
+
+  <div class="action-grid">
+    <div class="action" onclick="runPipeline()">
+      <div class="action-icon">🔍</div>
+      <div class="action-title">Search Jobs</div>
+      <div class="action-desc">Scrape LinkedIn & Indeed, score with AI</div>
+    </div>
+    <a href="/apply" class="action">
+      <div class="action-icon">📝</div>
+      <div class="action-title">Apply to Jobs</div>
+      <div class="action-desc">Universal form filler — any URL</div>
+    </a>
+    <a href="/tracking" class="action">
+      <div class="action-icon">📊</div>
+      <div class="action-title">Pipeline Board</div>
+      <div class="action-desc">Track application stages</div>
+    </a>
+    <a href="/profile" class="action">
+      <div class="action-icon">👤</div>
+      <div class="action-title">Edit Profile</div>
+      <div class="action-desc">Update data used in form filling</div>
+    </a>
+  </div>
+
+  <!-- Application pipeline mini view -->
+  <div class="card">
+    <div class="card-head">Application Pipeline
+      <a href="/tracking" class="btn btn-o btn-sm">View Full Board →</a>
+    </div>
+    <div class="pipeline-row" id="pipeline-row">
+      <div style="text-align:center;color:var(--mut);padding:20px;grid-column:1/-1">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Recent sessions -->
+  <div class="card">
+    <div class="card-head">Recent Applications
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-o btn-sm" onclick="runPipeline(true)">Quick Search</button>
+        <button class="btn btn-p btn-sm" id="pipe-btn" onclick="runPipeline()">Run Pipeline</button>
+        <span id="pipe-st" style="font-size:12px;color:var(--mut)"></span>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Job</th><th>Company</th><th>AI Score</th><th>Status</th><th>Updated</th><th></th></tr></thead>
+      <tbody id="sessions-tbody">
+        <tr><td colspan="6" style="text-align:center;color:var(--mut);padding:28px">No applications yet</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+async function loadStats() {
+  try {
+    const [sr, lr] = await Promise.all([fetch('/api/stats'), fetch('/api/status')]);
+    const s = await sr.json(), l = await lr.json();
+    document.getElementById('s-total').textContent   = s.total     ?? 0;
+    document.getElementById('s-applied').textContent = s.applied   ?? 0;
+    document.getElementById('s-score').textContent   = s.avg_score ? s.avg_score+'/100' : '—';
+    document.getElementById('s-err').textContent     = s.error     ?? 0;
+    const aw = s.sessions?.awaiting_input ?? 0;
+    const rv = s.sessions?.screenshot_review ?? 0;
+    document.getElementById('s-await').textContent = aw;
+    document.getElementById('s-rev').textContent   = rv;
+    if (aw > 0) {
+      const box = document.getElementById('await-alert');
+      box.style.display = 'flex';
+      document.getElementById('await-n').textContent = aw;
+    }
+    document.getElementById('llm-badge').textContent = `${l.llm?.provider} / ${l.llm?.model}`;
+    if (l.dry_run) document.getElementById('dry-badge').style.display = 'inline-flex';
+
+    // Pipeline mini
+    const pipeData = s.pipeline || {};
+    const stages = ['applied','recruiter_screen','technical_round','hiring_manager','offer'];
+    const labels = {'applied':'Applied','recruiter_screen':'Recruiter','technical_round':'Technical','hiring_manager':'HM Round','offer':'Offer'};
+    document.getElementById('pipeline-row').innerHTML = stages.map(st => `
+      <div class="pipe-stage">
+        <div class="pipe-stage-n">${pipeData[st] ?? 0}</div>
+        <div class="pipe-stage-l">${labels[st]}</div>
+      </div>`).join('');
+  } catch(e) { console.error(e); }
+}
+
+async function loadSessions() {
+  try {
+    const r = await fetch('/api/apply/sessions');
+    const sessions = await r.json();
+    const bc = s => ({'done':'b-done','awaiting_input':'b-wait','screenshot_review':'b-rev','filling':'b-fill','refilling':'b-fill','failed':'b-fail'}[s]||'b-idle');
+    const lb = s => s.replace(/_/g,' ');
+    document.getElementById('sessions-tbody').innerHTML = sessions.slice(0,10).map(s => `
+      <tr>
+        <td>${s.job_title}</td>
+        <td>${s.company}</td>
+        <td style="color:var(--acc2)">—</td>
+        <td><span class="badge ${bc(s.state)}">${lb(s.state)}</span></td>
+        <td style="color:var(--mut)">${s.updated_at?.slice(0,16).replace('T',' ')??''}</td>
+        <td><a href="/apply#${s.job_id}" class="btn btn-o btn-sm">→</a></td>
+      </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--mut);padding:28px">No applications yet</td></tr>';
+  } catch(e) {}
+}
+
+async function runPipeline(quick=false) {
+  const btn = document.getElementById('pipe-btn');
+  const st  = document.getElementById('pipe-st');
+  btn.innerHTML = '<span class="sp"></span>';
+  btn.disabled  = true;
+  st.textContent = 'Running...';
+  try {
+    await fetch('/api/pipeline/run', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quick})});
+    st.textContent = '✓ Pipeline running in background';
+  } catch(e) { st.textContent = '✗ Failed'; }
+  setTimeout(() => { btn.disabled=false; btn.innerHTML='Run Pipeline'; loadStats(); }, 3000);
+}
+
+loadStats(); loadSessions();
+setInterval(loadStats, 12000); setInterval(loadSessions, 15000);
+</script>
+</body>
+</html>
