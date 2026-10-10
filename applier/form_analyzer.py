@@ -276,10 +276,6 @@ FORM FIELDS:
         logger.error(f"  [FormAnalyzer] LLM failed: {e}")
         return FormAnalysis(page_url=page_url, job_id=job_id)
 
-<<<<<<< HEAD
-    fields = []
-    for fd in result.get("fields", []):
-=======
     # The LLM is instructed to return {"fields": [...], ...}, but models
     # sometimes return a bare list `[...]` instead of the wrapper object.
     # Handle both shapes so a single malformed response doesn't crash
@@ -298,7 +294,6 @@ FORM FIELDS:
         if not isinstance(fd, dict):
             logger.debug(f"  [FormAnalyzer] Skipping non-dict field entry: {fd!r}")
             continue
->>>>>>> 4226f10 (.)
         fields.append(FormField(
             label=        fd.get("label",       ""),
             field_key=    fd.get("field_key",   ""),

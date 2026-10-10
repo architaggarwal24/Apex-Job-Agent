@@ -2,19 +2,11 @@
 server/routes/jobs.py — Job listing, stats, pipeline API.
 """
 
-<<<<<<< HEAD
-import asyncio
-import logging
-from fastapi import APIRouter, BackgroundTasks
-from fastapi.responses import JSONResponse
-
-=======
 import logging
 from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
 
 from core.auth import get_current_user_id, require_owner
->>>>>>> 4226f10 (.)
 from db.jobs_db import JobsDB
 
 logger = logging.getLogger(__name__)
@@ -22,26 +14,16 @@ router = APIRouter()
 
 
 @router.get("/api/jobs")
-<<<<<<< HEAD
-async def get_jobs(status: str = "", limit: int = 500):
-    db = JobsDB()
-=======
 async def get_jobs(status: str = "", limit: int = 500,
                    uid: int = Depends(get_current_user_id)):
     db = JobsDB(user_id=uid)
->>>>>>> 4226f10 (.)
     jobs = db.get_all(limit=limit, status=status)
     return JSONResponse(jobs)
 
 
 @router.get("/api/jobs/{job_id}")
-<<<<<<< HEAD
-async def get_job(job_id: str):
-    db  = JobsDB()
-=======
 async def get_job(job_id: str, uid: int = Depends(get_current_user_id)):
     db  = JobsDB(user_id=uid)
->>>>>>> 4226f10 (.)
     job = db.get_by_id(job_id)
     if not job:
         from fastapi import HTTPException
@@ -50,14 +32,6 @@ async def get_job(job_id: str, uid: int = Depends(get_current_user_id)):
 
 
 @router.get("/api/stats")
-<<<<<<< HEAD
-async def get_stats():
-    db    = JobsDB()
-    stats = db.get_stats()
-
-    from applier.session import ApplicationSession
-    sessions = ApplicationSession.load_all()
-=======
 async def get_stats(uid: int = Depends(get_current_user_id)):
     db    = JobsDB(user_id=uid)
     stats = db.get_stats()
@@ -66,7 +40,6 @@ async def get_stats(uid: int = Depends(get_current_user_id)):
     # Session files are global; count only the ones for this user's jobs.
     mine     = db.job_ids()
     sessions = [s for s in ApplicationSession.load_all() if s.job_id in mine]
->>>>>>> 4226f10 (.)
     stats["sessions"] = {
         "awaiting_input":    sum(1 for s in sessions if s.state == "awaiting_input"),
         "screenshot_review": sum(1 for s in sessions if s.state == "screenshot_review"),
@@ -78,16 +51,6 @@ async def get_stats(uid: int = Depends(get_current_user_id)):
 
 
 @router.post("/api/pipeline/run")
-<<<<<<< HEAD
-async def run_pipeline(data: dict = None, background_tasks: BackgroundTasks = None):
-    quick    = (data or {}).get("quick", False)
-    platforms= (data or {}).get("platforms", None)
-
-    def _run():
-        from tracking.pipeline import run
-        try:
-            run(platforms=platforms, quick_mode=quick)
-=======
 async def run_pipeline(data: dict = None, background_tasks: BackgroundTasks = None,
                        uid: int = Depends(require_owner)):
     quick    = (data or {}).get("quick", False)
@@ -106,21 +69,10 @@ async def run_pipeline(data: dict = None, background_tasks: BackgroundTasks = No
         try:
             run(platforms=platforms, quick_mode=quick,
                 cancel_event=combined_cancel_event)
->>>>>>> 4226f10 (.)
         except Exception as e:
             logger.error(f"Pipeline error: {e}")
 
     if background_tasks:
-<<<<<<< HEAD
-        background_tasks.add_task(_run_in_thread, _run)
-    return JSONResponse({"status": "started", "quick": quick})
-
-
-@router.post("/api/jobs/{job_id}/score")
-async def rescore_job(job_id: str):
-    """Manually trigger AI scoring for a specific job."""
-    db  = JobsDB()
-=======
         t = threading.Thread(target=_run, daemon=True, name="pipeline-run")
         background_tasks.add_task(_start_thread, t, register_thread)
     return JSONResponse({"status": "started", "quick": quick})
@@ -150,7 +102,6 @@ async def rescore_job(job_id: str, uid: int = Depends(get_current_user_id)):
     providers (NVIDIA NIM) is 60-90s per call.
     """
     db  = JobsDB(user_id=uid)
->>>>>>> 4226f10 (.)
     job = db.get_by_id(job_id)
     if not job:
         from fastapi import HTTPException
@@ -158,10 +109,6 @@ async def rescore_job(job_id: str, uid: int = Depends(get_current_user_id)):
 
     from db.profile_db import ProfileDB
     from intelligence.scorer import score_job
-<<<<<<< HEAD
-    profile = ProfileDB().summary()
-    result  = score_job(job, profile)
-=======
     from core.llm import run_blocking
     import asyncio
 
@@ -172,24 +119,17 @@ async def rescore_job(job_id: str, uid: int = Depends(get_current_user_id)):
         from fastapi import HTTPException
         raise HTTPException(504, "Scoring timed out — the configured LLM provider "
                                   "took too long to respond")
->>>>>>> 4226f10 (.)
     db.update_score(job_id, result["score"], result["reason"])
     return JSONResponse(result)
 
 
 @router.post("/api/jobs/{job_id}/brief")
-<<<<<<< HEAD
-async def regenerate_brief(job_id: str):
-    """Manually trigger brief + resume tailoring for a job."""
-    db  = JobsDB()
-=======
 async def regenerate_brief(job_id: str, uid: int = Depends(get_current_user_id)):
     """
     Manually trigger brief + resume tailoring for a job.
     Makes blocking LLM calls internally — see rescore_job() above.
     """
     db  = JobsDB(user_id=uid)
->>>>>>> 4226f10 (.)
     job = db.get_by_id(job_id)
     if not job:
         from fastapi import HTTPException
@@ -197,10 +137,6 @@ async def regenerate_brief(job_id: str, uid: int = Depends(get_current_user_id))
 
     from db.profile_db import ProfileDB
     from intelligence.briefer import generate_and_save
-<<<<<<< HEAD
-    profile = ProfileDB().summary()
-    result  = generate_and_save(job, profile, db)
-=======
     from core.llm import run_blocking
     import asyncio
 
@@ -211,21 +147,10 @@ async def regenerate_brief(job_id: str, uid: int = Depends(get_current_user_id))
         from fastapi import HTTPException
         raise HTTPException(504, "Brief generation timed out — the configured "
                                   "LLM provider took too long to respond")
->>>>>>> 4226f10 (.)
     return JSONResponse(result)
 
 
 @router.delete("/api/jobs/duplicates")
-<<<<<<< HEAD
-async def purge_duplicates():
-    deleted = JobsDB().purge_duplicates()
-    return JSONResponse({"deleted": deleted})
-
-
-async def _run_in_thread(fn):
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, fn)
-=======
 async def purge_duplicates(uid: int = Depends(get_current_user_id)):
     deleted = JobsDB(user_id=uid).purge_duplicates()
     return JSONResponse({"deleted": deleted})
@@ -249,4 +174,3 @@ async def _start_thread(t, register_fn):
     is_alive() is True and the registry doesn't immediately prune it)."""
     t.start()
     register_fn(t)
->>>>>>> 4226f10 (.)

@@ -1,7 +1,5 @@
 """
 server/websocket.py — WebSocket endpoint for live progress updates.
-<<<<<<< HEAD
-=======
 
 _queues maps job_id -> asyncio.Queue, used to push apply-session
 progress events from background threads (push_event) to the
@@ -13,7 +11,6 @@ connected to via WebSocket (e.g. a pipeline scoring job before the
 user opens /apply) — these "orphaned" queues are capped at
 MAX_ORPHAN_QUEUES with FIFO eviction so _queues can't grow without
 bound over a long-running server process.
->>>>>>> 4226f10 (.)
 """
 
 import asyncio
@@ -23,29 +20,20 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-<<<<<<< HEAD
-_queues: dict[str, asyncio.Queue] = {}
-=======
 MAX_ORPHAN_QUEUES = 200
 
 _queues: dict[str, asyncio.Queue] = {}
 # job_ids with an actively-connected WebSocket — never evicted while connected.
 _connected: set[str] = set()
->>>>>>> 4226f10 (.)
 
 
 def get_queue(job_id: str) -> asyncio.Queue:
     if job_id not in _queues:
-<<<<<<< HEAD
-=======
         _evict_if_needed()
->>>>>>> 4226f10 (.)
         _queues[job_id] = asyncio.Queue()
     return _queues[job_id]
 
 
-<<<<<<< HEAD
-=======
 def _evict_if_needed():
     """If we're at the orphan cap, drop the oldest non-connected queue."""
     if len(_queues) < MAX_ORPHAN_QUEUES:
@@ -57,7 +45,6 @@ def _evict_if_needed():
             return
 
 
->>>>>>> 4226f10 (.)
 def push_event(loop: asyncio.AbstractEventLoop, job_id: str, event: str, data):
     """Thread-safe push from background thread → WebSocket queue."""
     try:
@@ -69,10 +56,6 @@ def push_event(loop: asyncio.AbstractEventLoop, job_id: str, event: str, data):
 
 @router.websocket("/ws/{job_id}")
 async def ws_endpoint(websocket: WebSocket, job_id: str):
-<<<<<<< HEAD
-    await websocket.accept()
-    q = get_queue(job_id)
-=======
     # HTTP auth middleware never runs for WebSocket connections, so this
     # endpoint must authenticate itself: a valid session, for an account
     # that still exists, that actually OWNS this job. Without the
@@ -92,7 +75,6 @@ async def ws_endpoint(websocket: WebSocket, job_id: str):
     await websocket.accept()
     q = get_queue(job_id)
     _connected.add(job_id)
->>>>>>> 4226f10 (.)
     try:
         while True:
             try:
@@ -104,9 +86,6 @@ async def ws_endpoint(websocket: WebSocket, job_id: str):
         pass
     except Exception as e:
         logger.debug(f"WS error {job_id}: {e}")
-<<<<<<< HEAD
-=======
     finally:
         _connected.discard(job_id)
         _queues.pop(job_id, None)
->>>>>>> 4226f10 (.)

@@ -2,17 +2,6 @@
 db/jobs_db.py — SQLite job tracker with full pipeline tracking.
 
 Tables:
-<<<<<<< HEAD
-  jobs        — Every scraped job with dedup, scoring, status
-  job_stages  — Application pipeline stages (Applied → Offer)
-  job_notes   — Per-job notes from the user
-  job_briefs  — LLM-generated job brief + tailored resume summary
-
-Dedup: normalised URL hash + title+company fuzzy match.
-"""
-
-import hashlib
-=======
   jobs               — Every scraped job with dedup, scoring and its ONE
                        lifecycle stage (see db/lifecycle.py)
   application_events — Audit trail / timeline: one row per stage change
@@ -40,24 +29,16 @@ per-user isolation yet.
 
 import hashlib
 import json
->>>>>>> 4226f10 (.)
 import logging
 import re
 import sqlite3
 from contextlib import contextmanager
-<<<<<<< HEAD
-from datetime import datetime, date
-=======
 from datetime import datetime, date, timedelta
->>>>>>> 4226f10 (.)
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 from core.config import cfg
-<<<<<<< HEAD
-=======
 from db import lifecycle
->>>>>>> 4226f10 (.)
 
 logger = logging.getLogger(__name__)
 
@@ -66,25 +47,14 @@ VALID_STATUSES = {
     "captcha_blocked", "manual",
 }
 
-<<<<<<< HEAD
-=======
 NOTE_MAX_CHARS = 1000
 
->>>>>>> 4226f10 (.)
 PIPELINE_STAGES = [
     "applied", "recruiter_screen", "technical_round",
     "hiring_manager", "offer", "rejected", "withdrawn",
 ]
 
 
-<<<<<<< HEAD
-class JobsDB:
-    def __init__(self, path: Path | None = None):
-        self.path = path or cfg.JOBS_DB_PATH
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._init_schema()
-
-=======
 def _session_states() -> dict[str, str]:
     """job_id -> apply-session state, from the session files. Only the
     migration needs this."""
@@ -161,7 +131,6 @@ class JobsDB:
         return c.execute("SELECT 1 FROM jobs WHERE job_id=? AND user_id=?",
                          (job_id, self.user_id)).fetchone() is not None
 
->>>>>>> 4226f10 (.)
     @contextmanager
     def _conn(self):
         conn = sqlite3.connect(str(self.path))
@@ -219,8 +188,6 @@ class JobsDB:
                     changed_at TEXT NOT NULL
                 )""")
             c.execute("""
-<<<<<<< HEAD
-=======
                 CREATE TABLE IF NOT EXISTS application_events (
                     id         INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id    INTEGER,
@@ -234,7 +201,6 @@ class JobsDB:
                     screenshot TEXT NOT NULL DEFAULT ''
                 )""")
             c.execute("""
->>>>>>> 4226f10 (.)
                 CREATE TABLE IF NOT EXISTS job_notes (
                     id         INTEGER PRIMARY KEY AUTOINCREMENT,
                     job_id     TEXT NOT NULL,
@@ -250,20 +216,15 @@ class JobsDB:
                 ("ai_score",        "INTEGER DEFAULT NULL"),
                 ("ai_score_reason", "TEXT DEFAULT ''"),
                 ("title_co_key",    "TEXT NOT NULL DEFAULT ''"),
-<<<<<<< HEAD
-=======
                 ("user_id",         "INTEGER DEFAULT NULL"),
                 ("stage",           "TEXT DEFAULT NULL"),
                 ("stage_entered_at", "TEXT DEFAULT ''"),
                 ("blocked_reason",  "TEXT DEFAULT ''"),
->>>>>>> 4226f10 (.)
             ]:
                 try:
                     c.execute(f"ALTER TABLE jobs ADD COLUMN {col[0]} {col[1]}")
                 except Exception:
                     pass
-<<<<<<< HEAD
-=======
             c.execute("CREATE INDEX IF NOT EXISTS idx_user ON jobs(user_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_stage ON jobs(user_id, stage)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_events_user "
@@ -340,7 +301,6 @@ class JobsDB:
                               kind="migrated", from_stage=prev, to_stage=to_stage,
                               actor="system", detail=json.dumps(detail))
                 prev = to_stage
->>>>>>> 4226f10 (.)
 
     # ── URL helpers ───────────────────────────────────────────────
 
@@ -371,11 +331,6 @@ class JobsDB:
     def _url_hash(url: str) -> str:
         return hashlib.sha256(JobsDB._norm_url(url).encode()).hexdigest()
 
-<<<<<<< HEAD
-    @staticmethod
-    def _job_id(url: str) -> str:
-        return hashlib.sha256(JobsDB._norm_url(url).encode()).hexdigest()[:16]
-=======
     def _job_id(self, url: str) -> str:
         """Unscoped: the legacy URL-only hash (so existing IDs stay
         valid). Scoped: hash of (user_id, url), so the same posting
@@ -384,7 +339,6 @@ class JobsDB:
         if self.user_id is not None:
             norm = f"{self.user_id}:{norm}"
         return hashlib.sha256(norm.encode()).hexdigest()[:16]
->>>>>>> 4226f10 (.)
 
     @staticmethod
     def _title_co_key(title: str, company: str) -> str:
@@ -403,14 +357,6 @@ class JobsDB:
         tc_key    = self._title_co_key(job["title"], job["company"])
         now       = datetime.now().isoformat()
 
-<<<<<<< HEAD
-        with self._conn() as c:
-            if c.execute("SELECT 1 FROM jobs WHERE url_hash=?",
-                         (url_hash,)).fetchone():
-                return None
-            if c.execute("SELECT 1 FROM jobs WHERE title_co_key=? AND source=?",
-                         (tc_key, job.get("source",""))).fetchone():
-=======
         and_sql, and_p = self._and()
         with self._conn() as c:
             if c.execute("SELECT 1 FROM jobs WHERE url_hash=?" + and_sql,
@@ -418,55 +364,27 @@ class JobsDB:
                 return None
             if c.execute("SELECT 1 FROM jobs WHERE title_co_key=? AND source=?" + and_sql,
                          (tc_key, job.get("source","")) + and_p).fetchone():
->>>>>>> 4226f10 (.)
                 return None
             try:
                 c.execute("""
                     INSERT INTO jobs
                         (job_id, url_hash, title_co_key, title, company, location,
                          url, source, description, salary, seniority, applicants,
-<<<<<<< HEAD
-                         status, found_at, updated_at)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'found',?,?)
-=======
                          status, stage, stage_entered_at, blocked_reason,
                          found_at, updated_at, user_id)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'found','found',?,'',?,?,?)
->>>>>>> 4226f10 (.)
                 """, (job_id, url_hash, tc_key,
                       job["title"], job["company"], job.get("location",""),
                       url, job.get("source",""), job.get("description",""),
                       job.get("salary",""), job.get("seniority",""),
-<<<<<<< HEAD
-                      job.get("applicants",""), now, now))
-=======
                       job.get("applicants",""), now, now, now, self.user_id))
                 _insert_event(c, user_id=self.user_id, job_id=job_id, at=now,
                               kind="created", from_stage=None, to_stage="found",
                               actor="system")
->>>>>>> 4226f10 (.)
                 return job_id
             except sqlite3.IntegrityError:
                 return None
 
-<<<<<<< HEAD
-    def update_status(self, job_id: str, status: str, error: str = ""):
-        now = datetime.now().isoformat()
-        applied = now if status == "applied" else ""
-        with self._conn() as c:
-            c.execute("""
-                UPDATE jobs SET status=?, error_message=?, updated_at=?,
-                    applied_at=CASE WHEN ?!='' THEN ? ELSE applied_at END
-                WHERE job_id=?
-            """, (status, error, now, applied, applied, job_id))
-
-    def update_score(self, job_id: str, score: int, reason: str):
-        with self._conn() as c:
-            c.execute("""
-                UPDATE jobs SET ai_score=?, ai_score_reason=?, updated_at=?
-                WHERE job_id=?
-            """, (score, reason, datetime.now().isoformat(), job_id))
-=======
     # ── Lifecycle ─────────────────────────────────────────────────
 
     def get_stage(self, job_id: str) -> str | None:
@@ -561,17 +479,13 @@ class JobsDB:
                 UPDATE jobs SET ai_score=?, ai_score_reason=?, updated_at=?
                 WHERE job_id=?""" + and_sql,
                 (score, reason, datetime.now().isoformat(), job_id) + and_p)
->>>>>>> 4226f10 (.)
 
     def save_brief(self, job_id: str, brief: str,
                    tailored_summary: str = "", tailored_skills: str = ""):
         now = datetime.now().isoformat()
         with self._conn() as c:
-<<<<<<< HEAD
-=======
             if not self._owns(c, job_id):
                 raise LookupError("Job not found")
->>>>>>> 4226f10 (.)
             c.execute("""
                 INSERT INTO job_briefs
                     (job_id, brief, tailored_summary, tailored_skills, generated_at)
@@ -583,21 +497,6 @@ class JobsDB:
                     generated_at=excluded.generated_at
             """, (job_id, brief, tailored_summary, tailored_skills, now))
 
-<<<<<<< HEAD
-    def add_stage(self, job_id: str, stage: str, note: str = ""):
-        if stage not in PIPELINE_STAGES:
-            raise ValueError(f"Invalid stage: {stage}")
-        now = datetime.now().isoformat()
-        with self._conn() as c:
-            c.execute("""
-                INSERT INTO job_stages (job_id, stage, note, changed_at)
-                VALUES (?, ?, ?, ?)
-            """, (job_id, stage, note, now))
-        self.update_status(job_id, "applied" if stage == "applied" else "in_progress")
-
-    def add_note(self, job_id: str, note: str):
-        with self._conn() as c:
-=======
     def add_stage(self, job_id: str, stage: str, note: str = "",
                   actor: str = "user"):
         """Compatibility wrapper over transition() for the old pipeline stage
@@ -617,21 +516,11 @@ class JobsDB:
         with self._conn() as c:
             if not self._owns(c, job_id):
                 raise LookupError("Job not found")
->>>>>>> 4226f10 (.)
             c.execute("""
                 INSERT INTO job_notes (job_id, note, created_at) VALUES (?, ?, ?)
             """, (job_id, note, datetime.now().isoformat()))
 
     def purge_duplicates(self) -> int:
-<<<<<<< HEAD
-        with self._conn() as c:
-            r = c.execute("""
-                DELETE FROM jobs WHERE id NOT IN (
-                    SELECT MAX(id) FROM jobs GROUP BY title_co_key, source
-                )""")
-            return r.rowcount
-
-=======
         # GROUP BY includes user_id so "duplicate" means duplicate
         # *within one user's jobs* — two users each having the same
         # posting is correct, not a duplicate to purge.
@@ -704,7 +593,6 @@ class JobsDB:
             ).fetchone()
             return r["v"] or ""
 
->>>>>>> 4226f10 (.)
     # ── Read ──────────────────────────────────────────────────────
 
     def exists_bulk(self, urls: list[str]) -> set[str]:
@@ -712,17 +600,6 @@ class JobsDB:
             return set()
         hashes = [self._url_hash(u) for u in urls]
         ph = ",".join("?" * len(hashes))
-<<<<<<< HEAD
-        with self._conn() as c:
-            rows = c.execute(
-                f"SELECT url FROM jobs WHERE url_hash IN ({ph})", hashes
-            ).fetchall()
-        return {r["url"] for r in rows}
-
-    def get_by_id(self, job_id: str) -> dict | None:
-        with self._conn() as c:
-            r = c.execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
-=======
         and_sql, and_p = self._and()
         with self._conn() as c:
             rows = c.execute(
@@ -744,7 +621,6 @@ class JobsDB:
         with self._conn() as c:
             r = c.execute("SELECT * FROM jobs WHERE job_id=?" + and_sql,
                           (job_id,) + and_p).fetchone()
->>>>>>> 4226f10 (.)
             if not r:
                 return None
             d = dict(r)
@@ -753,11 +629,6 @@ class JobsDB:
             d["brief"]           = brief["brief"]           if brief else ""
             d["tailored_summary"] = brief["tailored_summary"] if brief else ""
             d["tailored_skills"]  = brief["tailored_skills"]  if brief else ""
-<<<<<<< HEAD
-            d["stages"] = [dict(s) for s in c.execute(
-                "SELECT * FROM job_stages WHERE job_id=? ORDER BY changed_at",
-                (job_id,)).fetchall()]
-=======
             # Old job_stages shape, derived from the audit trail.
             ph = ",".join("?" * len(lifecycle.STAGE_TO_PIPELINE))
             ev_sql, ev_p = self._and()
@@ -772,26 +643,12 @@ class JobsDB:
                     "stage": lifecycle.STAGE_TO_PIPELINE[e["to_stage"]],
                     "note": _parse_detail(e["detail"]).get("note", ""),
                     "changed_at": e["at"]})
->>>>>>> 4226f10 (.)
             d["notes"] = [dict(n) for n in c.execute(
                 "SELECT * FROM job_notes WHERE job_id=? ORDER BY created_at DESC",
                 (job_id,)).fetchall()]
             return d
 
     def get_all(self, limit: int = 1000, status: str = "") -> list[dict]:
-<<<<<<< HEAD
-        with self._conn() as c:
-            if status:
-                rows = c.execute("""
-                    SELECT * FROM jobs WHERE status=?
-                    ORDER BY ai_score DESC NULLS LAST, found_at DESC LIMIT ?
-                """, (status, limit)).fetchall()
-            else:
-                rows = c.execute("""
-                    SELECT * FROM jobs
-                    ORDER BY ai_score DESC NULLS LAST, found_at DESC LIMIT ?
-                """, (limit,)).fetchall()
-=======
         and_sql, and_p     = self._and()
         where_sql, where_p = self._where()
         with self._conn() as c:
@@ -805,53 +662,20 @@ class JobsDB:
                     SELECT * FROM jobs""" + where_sql + """
                     ORDER BY ai_score DESC NULLS LAST, found_at DESC LIMIT ?
                 """, where_p + (limit,)).fetchall()
->>>>>>> 4226f10 (.)
             return [dict(r) for r in rows]
 
     def get_pending(self, limit: int = 50) -> list[dict]:
         """Jobs ready to apply — scored above threshold, not yet applied."""
-<<<<<<< HEAD
-        threshold = cfg.AUTO_SKIP_SCORE_THRESHOLD
-=======
         try:
             from db.settings_db import SettingsDB
             threshold = SettingsDB.get().auto_skip_score_threshold()
         except Exception:
             threshold = cfg.AUTO_SKIP_SCORE_THRESHOLD
         and_sql, and_p = self._and()
->>>>>>> 4226f10 (.)
         with self._conn() as c:
             rows = c.execute("""
                 SELECT * FROM jobs
                 WHERE status='found'
-<<<<<<< HEAD
-                AND (ai_score IS NULL OR ai_score >= ?)
-                ORDER BY ai_score DESC NULLS LAST, found_at DESC
-                LIMIT ?
-            """, (threshold, limit)).fetchall()
-            return [dict(r) for r in rows]
-
-    def get_pipeline(self) -> dict[str, list[dict]]:
-        """Return jobs grouped by their latest pipeline stage."""
-        with self._conn() as c:
-            # Get latest stage per job
-            stage_rows = c.execute("""
-                SELECT js.job_id, js.stage, j.title, j.company, j.url,
-                       j.ai_score, js.changed_at
-                FROM job_stages js
-                JOIN jobs j ON j.job_id = js.job_id
-                WHERE js.id IN (
-                    SELECT MAX(id) FROM job_stages GROUP BY job_id
-                )
-                ORDER BY js.changed_at DESC
-            """).fetchall()
-
-        result: dict[str, list] = {s: [] for s in PIPELINE_STAGES}
-        for r in stage_rows:
-            stage = r["stage"]
-            if stage in result:
-                result[stage].append(dict(r))
-=======
                 AND (ai_score IS NULL OR ai_score >= ?)""" + and_sql + """
                 ORDER BY ai_score DESC NULLS LAST, found_at DESC
                 LIMIT ?
@@ -876,37 +700,10 @@ class JobsDB:
             d = dict(r)
             d["stage"] = lifecycle.STAGE_TO_PIPELINE[d["stage"]]
             result[d["stage"]].append(d)
->>>>>>> 4226f10 (.)
         return result
 
     def get_stats(self) -> dict:
         today = date.today().isoformat()
-<<<<<<< HEAD
-        with self._conn() as c:
-            status_rows = c.execute(
-                "SELECT status, COUNT(*) n FROM jobs GROUP BY status"
-            ).fetchall()
-            today_count = c.execute(
-                "SELECT COUNT(*) n FROM jobs WHERE found_at LIKE ?",
-                (f"{today}%",)
-            ).fetchone()["n"]
-            applied_today = c.execute(
-                "SELECT COUNT(*) n FROM jobs WHERE applied_at LIKE ?",
-                (f"{today}%",)
-            ).fetchone()["n"]
-            total = c.execute("SELECT COUNT(*) n FROM jobs").fetchone()["n"]
-            scored = c.execute(
-                "SELECT COUNT(*) n FROM jobs WHERE ai_score IS NOT NULL"
-            ).fetchone()["n"]
-            avg_score = c.execute(
-                "SELECT AVG(ai_score) v FROM jobs WHERE ai_score IS NOT NULL"
-            ).fetchone()["v"]
-            pipeline_counts = c.execute("""
-                SELECT stage, COUNT(*) n FROM job_stages
-                WHERE id IN (SELECT MAX(id) FROM job_stages GROUP BY job_id)
-                GROUP BY stage
-            """).fetchall()
-=======
         and_sql, and_p     = self._and()
         where_sql, where_p = self._where()
         ph = ",".join("?" * len(lifecycle.STAGE_TO_PIPELINE))
@@ -937,7 +734,6 @@ class JobsDB:
                 f"SELECT stage, COUNT(*) n FROM jobs WHERE stage IN ({ph})"
                 + and_sql + " GROUP BY stage",
                 tuple(lifecycle.STAGE_TO_PIPELINE) + and_p).fetchall()
->>>>>>> 4226f10 (.)
 
         stats = {s: 0 for s in VALID_STATUSES}
         for r in status_rows:
@@ -947,10 +743,6 @@ class JobsDB:
         stats["applied_today"] = applied_today
         stats["scored"]        = scored
         stats["avg_score"]     = round(avg_score or 0, 1)
-<<<<<<< HEAD
-        stats["pipeline"]      = {r["stage"]: r["n"] for r in pipeline_counts}
-        return stats
-=======
         stats["pipeline"]      = {lifecycle.STAGE_TO_PIPELINE[r["stage"]]: r["n"]
                                   for r in pipeline_counts}
         return stats
@@ -1226,4 +1018,3 @@ class JobsDB:
         with self._conn() as c:
             return c.execute("SELECT COALESCE(MAX(id), 0) v FROM application_events"
                              + where_sql, where_p).fetchone()["v"]
->>>>>>> 4226f10 (.)

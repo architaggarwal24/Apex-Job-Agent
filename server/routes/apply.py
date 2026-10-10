@@ -1,7 +1,5 @@
 """
 server/routes/apply.py — Application session API.
-<<<<<<< HEAD
-=======
 
 Includes:
   - A per-job in-memory lock preventing the same job_id from being
@@ -13,16 +11,10 @@ Includes:
     (read from SettingsDB) before a REAL (non-dry-run) submission.
     These settings previously existed in the UI but were never
     checked anywhere.
->>>>>>> 4226f10 (.)
 """
 
 import asyncio
 import logging
-<<<<<<< HEAD
-from fastapi import APIRouter, BackgroundTasks, HTTPException
-from fastapi.responses import JSONResponse
-
-=======
 import threading
 from datetime import datetime
 
@@ -31,17 +23,11 @@ from fastapi.responses import JSONResponse
 
 from core.auth import get_current_user_id, require_owner
 from db import lifecycle
->>>>>>> 4226f10 (.)
 from db.jobs_db import JobsDB
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-<<<<<<< HEAD
-
-def _get_job(job_id: str) -> dict:
-    job = JobsDB().get_by_id(job_id)
-=======
 # ── Per-job concurrency lock ────────────────────────────────────────────────
 _active_jobs: set[str] = set()
 _active_lock = threading.Lock()
@@ -64,26 +50,11 @@ def _release(job_id: str):
 def _get_job(job_id: str, uid: int) -> dict:
     """The caller's own job, else 404 (same answer for someone else's)."""
     job = JobsDB(user_id=uid).get_by_id(job_id)
->>>>>>> 4226f10 (.)
     if not job:
         raise HTTPException(404, f"Job {job_id} not found")
     return job
 
 
-<<<<<<< HEAD
-@router.post("/api/apply/start/{job_id}")
-async def start(job_id: str, background_tasks: BackgroundTasks):
-    from applier.session import ApplicationSession, State, Orchestrator
-
-    job     = _get_job(job_id)
-    session = ApplicationSession.load(job_id)
-
-    if session and session.state == State.DONE.value:
-        return JSONResponse({"status": "already_done"})
-
-    # Reset failed/skipped sessions
-    if session and session.state in (State.FAILED.value, State.SKIPPED.value):
-=======
 def _settings_dry_run() -> bool:
     try:
         from db.settings_db import SettingsDB
@@ -111,7 +82,6 @@ async def start(job_id: str, background_tasks: BackgroundTasks,
     # Reset failed/skipped sessions
     if session and (session.state in (State.FAILED.value, State.SKIPPED.value)
                     or job["stage"] in ("failed", "skipped")):
->>>>>>> 4226f10 (.)
         session.state       = State.IDLE.value
         session.error       = ""
         session.screenshots = []
@@ -129,11 +99,8 @@ async def start(job_id: str, background_tasks: BackgroundTasks,
             Orchestrator(job).run_iter1(emit)
         except Exception as e:
             emit("error", str(e))
-<<<<<<< HEAD
-=======
         finally:
             _release(job_id)
->>>>>>> 4226f10 (.)
 
     background_tasks.add_task(_thread, run)
     return JSONResponse({"status": "started", "job_id": job_id})
@@ -149,18 +116,6 @@ async def status(job_id: str):
 
 
 @router.post("/api/apply/answer/{job_id}")
-<<<<<<< HEAD
-async def answer(job_id: str, data: dict, background_tasks: BackgroundTasks):
-    """Submit missing field answers → trigger iteration 2."""
-    from applier.session import ApplicationSession, State, Orchestrator
-
-    s = ApplicationSession.load(job_id)
-    if not s or s.state != State.AWAITING.value:
-        raise HTTPException(400, "Session not awaiting input")
-
-    answers = data.get("answers", {})
-    job     = _get_job(job_id)
-=======
 async def answer(job_id: str, data: dict, background_tasks: BackgroundTasks,
                  uid: int = Depends(require_owner)):
     """Submit missing field answers → trigger iteration 2."""
@@ -182,42 +137,23 @@ async def answer(job_id: str, data: dict, background_tasks: BackgroundTasks,
         _release(job_id)
         raise HTTPException(400, str(e))
     remember = data.get("remember")
->>>>>>> 4226f10 (.)
     loop    = asyncio.get_event_loop()
     from server.websocket import push_event
 
     def run():
         def emit(event, d): push_event(loop, job_id, event, d)
         try:
-<<<<<<< HEAD
-            Orchestrator(job).run_iter2(answers, emit)
-        except Exception as e:
-            emit("error", str(e))
-=======
             Orchestrator(job).run_iter2(answers, emit, remember=remember)
         except Exception as e:
             emit("error", str(e))
         finally:
             _release(job_id)
->>>>>>> 4226f10 (.)
 
     background_tasks.add_task(_thread, run)
     return JSONResponse({"status": "iter2_started"})
 
 
 @router.post("/api/apply/submit/{job_id}")
-<<<<<<< HEAD
-async def submit(job_id: str, data: dict, background_tasks: BackgroundTasks):
-    """User approved screenshot → submit application."""
-    from applier.session import ApplicationSession, State, Orchestrator
-
-    s = ApplicationSession.load(job_id)
-    if not s or s.state != State.REVIEW.value:
-        raise HTTPException(400, "Session not in review state")
-
-    corrections = data.get("corrections", [])
-    job  = _get_job(job_id)
-=======
 async def submit(job_id: str, data: dict, background_tasks: BackgroundTasks,
                  uid: int = Depends(require_owner)):
     """User approved screenshot → submit application.
@@ -245,7 +181,6 @@ async def submit(job_id: str, data: dict, background_tasks: BackgroundTasks,
         raise
 
     corrections = data.get("corrections", [])
->>>>>>> 4226f10 (.)
     loop = asyncio.get_event_loop()
     from server.websocket import push_event
 
@@ -255,22 +190,13 @@ async def submit(job_id: str, data: dict, background_tasks: BackgroundTasks,
             Orchestrator(job).submit(corrections or None, emit)
         except Exception as e:
             emit("error", str(e))
-<<<<<<< HEAD
-=======
         finally:
             _release(job_id)
->>>>>>> 4226f10 (.)
 
     background_tasks.add_task(_thread, run)
     return JSONResponse({"status": "submitting"})
 
 
-<<<<<<< HEAD
-@router.post("/api/apply/skip/{job_id}")
-async def skip(job_id: str):
-    from applier.session import ApplicationSession, State
-    JobsDB().update_status(job_id, "skipped")
-=======
 def _enforce_rate_limits():
     """
     Raises HTTPException(429) if the configured daily_apply_limit
@@ -326,7 +252,6 @@ async def skip(job_id: str, uid: int = Depends(get_current_user_id)):
         JobsDB(user_id=uid).update_status(job_id, "skipped", actor="user")
     except lifecycle.IllegalTransition as e:
         raise HTTPException(409, str(e))
->>>>>>> 4226f10 (.)
     s = ApplicationSession.load(job_id)
     if s:
         s.state = State.SKIPPED.value
@@ -341,8 +266,6 @@ async def sessions():
     return JSONResponse([s.to_dict() for s in all_s[:100]])
 
 
-<<<<<<< HEAD
-=======
 @router.get("/api/apply/limits")
 async def get_limits():
     """Expose current rate-limit status to the UI (e.g. to disable
@@ -379,7 +302,6 @@ async def get_limits():
     })
 
 
->>>>>>> 4226f10 (.)
 async def _thread(fn):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, fn)

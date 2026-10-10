@@ -60,7 +60,7 @@ RULES: tuple[tuple[str, str], ...] = (
      r"|\bis a required field|required field|please (enter|select|provide|choose) an? valid"
      r"|invalid (email|phone|input|value|format|answer|number|date)"),
     ("unsupported_form",
-     r"could ?n[o']t find (a |the )?submit|no (submit|apply) button|unsupported (form|flow|site)"
+     r"could ?n[o']t find (a |the )?submit|no (submit|apply) button|unsupported[ _]?(form|flow|site)"
      r"|form (is )?not supported|not supported (yet|by)"),
     ("timeout",
      r"(?<![a-z])time[sd]?[ _]?out|deadline exceeded"),

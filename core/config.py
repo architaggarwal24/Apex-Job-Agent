@@ -28,29 +28,6 @@ class Config:
     LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))
 
     MISTRAL_API_KEY   = os.getenv("MISTRAL_API_KEY",   "")
-<<<<<<< HEAD
-    MISTRAL_MODEL     = os.getenv("MISTRAL_MODEL",     "mistral-large-latest")
-
-    NVIDIA_API_KEY    = os.getenv("NVIDIA_NIM_API_KEY", "")
-    NVIDIA_MODEL      = os.getenv("NVIDIA_NIM_MODEL",   "deepseek-ai/deepseek-v4-flash")
-    NVIDIA_BASE_URL   = os.getenv("NVIDIA_BASE_URL",    "https://integrate.api.nvidia.com/v1")
-
-    OPENROUTER_API_KEY  = os.getenv("OPENROUTER_API_KEY",  "")
-    OPENROUTER_MODEL    = os.getenv("OPENROUTER_MODEL",    "mistralai/mistral-large")
-    OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-
-    GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY",  "")
-    GEMINI_MODEL      = os.getenv("GEMINI_MODEL",    "gemini-2.0-flash")
-
-    OLLAMA_MODEL      = os.getenv("OLLAMA_MODEL",    "qwen2.5:7b")
-    OLLAMA_BASE_URL   = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-
-    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-    ANTHROPIC_MODEL   = os.getenv("ANTHROPIC_MODEL",   "claude-sonnet-4-20250514")
-
-    OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY",  "")
-    OPENAI_MODEL      = os.getenv("OPENAI_MODEL",    "gpt-4o")
-=======
     MISTRAL_MODEL     = os.getenv("MISTRAL_MODEL",     "mistral-medium-latest")
 
     NVIDIA_API_KEY    = os.getenv("NVIDIA_NIM_API_KEY", "")
@@ -72,7 +49,6 @@ class Config:
 
     OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY",  "")
     OPENAI_MODEL      = os.getenv("OPENAI_MODEL",    "gpt-5.6-terra")
->>>>>>> 4226f10 (.)
     OPENAI_BASE_URL   = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
     # ── Browser ───────────────────────────────────────────────────
@@ -81,18 +57,6 @@ class Config:
     BROWSER_HEADLESS      = os.getenv("BROWSER_HEADLESS", "false").lower() == "true"
     BROWSER_SLOW_MO       = int(os.getenv("BROWSER_SLOW_MO", "60"))
 
-<<<<<<< HEAD
-    # ── Credentials ───────────────────────────────────────────────
-    LINKEDIN_EMAIL    = os.getenv("LINKEDIN_EMAIL",    "")
-    LINKEDIN_PASSWORD = os.getenv("LINKEDIN_PASSWORD", "")
-    INDEED_EMAIL      = os.getenv("INDEED_EMAIL",      "")
-    INDEED_PASSWORD   = os.getenv("INDEED_PASSWORD",   "")
-
-    # ── Server ────────────────────────────────────────────────────
-    APP_HOST       = os.getenv("APP_HOST",       "0.0.0.0")
-    APP_PORT       = int(os.getenv("APP_PORT",   "8000"))
-    APP_SECRET_KEY = os.getenv("APP_SECRET_KEY", "change_me")
-=======
     # ── Server ────────────────────────────────────────────────────
     # Loopback by default. Binding 0.0.0.0 exposes the app directly on
     # every network interface; behind a reverse proxy (Caddy/nginx doing
@@ -112,7 +76,6 @@ class Config:
     # isolation: until then a second account could see the owner's
     # resume and settings. See MULTI_USER_STATUS.md.
     ALLOW_SIGNUP   = os.getenv("ALLOW_SIGNUP", "false").lower() == "true"
->>>>>>> 4226f10 (.)
 
     # ── Agent behaviour ───────────────────────────────────────────
     DRY_RUN                   = os.getenv("DRY_RUN", "false").lower() == "true"

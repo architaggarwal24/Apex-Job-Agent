@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<!-- tests/fixtures/lever_application.html
+     A HAND-WRITTEN stand-in for a Lever application page (jobs.lever.co/<company>/<id>/apply style):
+     controls wrapped in <label> with an .application-label, a "full name" box, urls[...] links, custom
+     "cards" questions (radio lists, a select, a textarea) and an equal-opportunity block.
+     It is NOT a capture of a live page - the adapter was never run against a real Lever site. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Acme Robotics - Platform Engineer</title>
+  <style> .required { color: #c00; } ul { list-style: none; } .h-captcha { display: none; } </style>
+</head>
+<body class="application-page">
+  <div class="main-header"><h1>Platform Engineer</h1><div class="posting-categories">Bengaluru / Engineering</div></div>
+  <div class="content">
+    <form id="application-form" class="application-form" method="POST" enctype="multipart/form-data"
+          action="https://jobs.lever.co/acme/ab12cd34-0000-4aaa-8bbb-1234567890ab/apply">
+      <div class="section page-centered application-form">
+        <h4>Submit your application</h4>
+        <ul>
+          <li class="application-question resume">
+            <label>
+              <div class="application-label">Resume/CV <span class="required">✱</span></div>
+              <div class="application-field"><div class="resume-upload">
+                <input type="file" name="resume" id="resume-upload-input" required>
+                <span>ATTACH RESUME/CV</span>
+              </div></div>
+            </label>
+          </li>
+          <li class="application-question">
+            <label>
+              <div class="application-label">Full name <span class="required">✱</span></div>
+              <div class="application-field"><input type="text" name="name" required></div>
+            </label>
+          </li>
+          <li class="application-question">
+            <label>
+              <div class="application-label">Email <span class="required">✱</span></div>
+              <div class="application-field"><input type="text" name="email" required></div>
+            </label>
+          </li>
+          <li class="application-question">
+            <label>
+              <div class="application-label">Phone</div>
+              <div class="application-field"><input type="text" name="phone"></div>
+            </label>
+          </li>
+          <li class="application-question">
+            <label>
+              <div class="application-label">Current company</div>
+              <div class="application-field"><input type="text" name="org"></div>
+            </label>
+          </li>
+        </ul>
+      </div>
+
+      <div class="section page-centered application-form">
+        <h4>Links</h4>
+        <ul>
+          <li class="application-question"><label><div class="application-label">LinkedIn URL</div><div class="application-field"><input type="text" name="urls[LinkedIn]"></div></label></li>
+          <li class="application-question"><label><div class="application-label">Twitter URL</div><div class="application-field"><input type="text" name="urls[Twitter]"></div></label></li>
+          <li class="application-question"><label><div class="application-label">GitHub URL</div><div class="application-field"><input type="text" name="urls[GitHub]"></div></label></li>
+          <li class="application-question"><label><div class="application-label">Portfolio URL</div><div class="application-field"><input type="text" name="urls[Portfolio]"></div></label></li>
+          <li class="application-question"><label><div class="application-label">Other website</div><div class="application-field"><input type="text" name="urls[Other]"></div></label></li>
+        </ul>
+      </div>
+
+      <div class="section page-centered application-form custom-questions">
+        <h4>Additional information</h4>
+        <ul>
+          <li class="application-question custom-question">
+            <label>
+              <div class="application-label full-width">Are you legally authorized to work in the United States? <span class="required">✱</span></div>
+              <div class="application-field full-width">
+                <ul data-qa="multiple-choice">
+                  <li><label><input type="radio" name="cards[11111111-aaaa-4bbb-8ccc-000000000001][field0]" value="Yes" required><span class="application-answer-alternative">Yes</span></label></li>
+                  <li><label><input type="radio" name="cards[11111111-aaaa-4bbb-8ccc-000000000001][field0]" value="No"><span class="application-answer-alternative">No</span></label></li>
+                </ul>
+              </div>
+            </label>
+          </li>
+          <li class="application-question custom-question">
+            <label>
+              <div class="application-label full-width">Will you now or in the future require sponsorship for employment visa status? <span class="required">✱</span></div>
+              <div class="application-field full-width">
+                <ul data-qa="multiple-choice">
+                  <li><label><input type="radio" name="cards[11111111-aaaa-4bbb-8ccc-000000000002][field0]" value="Yes" required><span class="application-answer-alternative">Yes</span></label></li>
+                  <li><label><input type="radio" name="cards[11111111-aaaa-4bbb-8ccc-000000000002][field0]" value="No"><span class="application-answer-alternative">No</span></label></li>
+                </ul>
+              </div>
+            </label>
+          </li>
+          <li class="application-question custom-question">
+            <label>
+              <div class="application-label full-width">Why are you interested in Acme Robotics? <span class="required">✱</span></div>
+              <div class="application-field full-width"><textarea name="cards[11111111-aaaa-4bbb-8ccc-000000000003][field0]" required></textarea></div>
+            </label>
+          </li>
+          <li class="application-question custom-question">
+            <label>
+              <div class="application-label full-width">How did you hear about this role?</div>
+              <div class="application-field full-width">
+                <select name="cards[11111111-aaaa-4bbb-8ccc-000000000004][field0]">
+                  <option value="">Select…</option><option value="LinkedIn">LinkedIn</option><option value="Referral">Referral</option><option value="Other">Other</option>
+                </select>
+              </div>
+            </label>
+          </li>
+          <li class="application-question">
+            <label>
+              <div class="application-label">Additional information</div>
+              <div class="application-field"><textarea name="comments" id="additional-information" placeholder="Add a cover letter or anything else you want to share."></textarea></div>
+            </label>
+          </li>
+        </ul>
+      </div>
+
+      <div class="section page-centered application-form eeo" id="eeo-section">
+        <h4>U.S. Equal Employment Opportunity Information (Completion is voluntary)</h4>
+        <ul>
+          <li class="application-question"><label><div class="application-label">Gender</div><div class="application-field">
+            <select name="eeo[gender]"><option value="">Select…</option><option>Male</option><option>Female</option><option>Decline to self-identify</option></select></div></label></li>
+          <li class="application-question"><label><div class="application-label">Veteran status</div><div class="application-field">
+            <select name="eeo[veteran]"><option value="">Select…</option><option>I am not a protected veteran</option></select></div></label></li>
+        </ul>
+      </div>
+
+      <div class="section page-centered">
+        <div class="h-captcha" data-sitekey="00000000-0000-0000-0000-000000000000" data-size="invisible"></div>
+        <button id="btn-submit" class="postings-btn template-btn-submit hex" type="submit" data-qa="btn-submit">Submit application</button>
+      </div>
+    </form>
+  </div>
+  <script>
+    window.__submitted = false;
+    document.getElementById('application-form').addEventListener('submit', function (e) { e.preventDefault(); window.__submitted = true; });
+  </script>
+</body>
+</html>

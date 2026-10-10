@@ -7,8 +7,6 @@ Usage:
   python main.py --quick      → quick pipeline (2 titles × 2 locations)
   python main.py --schedule   → web UI + daily scheduled pipeline
   python main.py --parse      → parse resume.pdf and seed profile DB
-<<<<<<< HEAD
-=======
   python main.py --dev-ui     → web UI + Next.js dev server (hot reload),
                                  both in this one terminal
 
@@ -23,21 +21,16 @@ Press Ctrl+C to stop. The agent will:
   2. Wait briefly for it to wind down
   3. Exit cleanly
 Press Ctrl+C twice to force-exit immediately.
->>>>>>> 4226f10 (.)
 """
 
 import argparse
 import logging
 import os
-<<<<<<< HEAD
-import sys
-=======
 import shutil
 import signal
 import subprocess
 import sys
 import threading
->>>>>>> 4226f10 (.)
 from datetime import date
 from pathlib import Path
 
@@ -47,12 +40,8 @@ sys.path.insert(0, str(ROOT))
 from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 
-<<<<<<< HEAD
-from core.config import cfg
-=======
 from core.config   import cfg
 from core.shutdown import shutdown_event, wait_for_threads
->>>>>>> 4226f10 (.)
 
 cfg.ensure_dirs()
 
@@ -69,10 +58,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
-<<<<<<< HEAD
-
-def start_server():
-=======
 _force_exit_count = 0
 _next_process = None   # set by _start_next_dev(), read by the signal handler
 
@@ -175,14 +160,10 @@ def _stop_next_dev():
 
 
 def start_server(dev_ui: bool = False):
->>>>>>> 4226f10 (.)
     import uvicorn
     from server.app import create_app
     from core.llm import provider_info
 
-<<<<<<< HEAD
-    app = create_app()
-=======
     if dev_ui:
         _start_next_dev()
     elif (ROOT / "frontend" / "out").exists():
@@ -194,14 +175,10 @@ def start_server(dev_ui: bool = False):
     app = create_app()
     from server.routes.queue import get_worker
     get_worker().start()          # recovers interrupted jobs, then works the queue
->>>>>>> 4226f10 (.)
     llm = provider_info()
     logger.info(f"Starting Apex Job Agent UI → http://localhost:{cfg.APP_PORT}")
     logger.info(f"LLM: {llm['provider']} / {llm['model']}")
     logger.info(f"Dry run: {cfg.DRY_RUN}")
-<<<<<<< HEAD
-    uvicorn.run(app, host=cfg.APP_HOST, port=cfg.APP_PORT, log_level="warning")
-=======
     logger.info("Press Ctrl+C to stop.")
 
     config = uvicorn.Config(app, host=cfg.APP_HOST, port=cfg.APP_PORT,
@@ -210,26 +187,17 @@ def start_server(dev_ui: bool = False):
     # Let our custom SIGINT handler take precedence over uvicorn's default
     server.install_signal_handlers = lambda: None
     server.run()
->>>>>>> 4226f10 (.)
 
 
 def run_pipeline(quick: bool = False):
     from tracking.pipeline import run
     logger.info(f"Running pipeline (quick={quick})")
-<<<<<<< HEAD
-    stats = run(quick_mode=quick)
-=======
     stats = run(quick_mode=quick, cancel_event=shutdown_event)
->>>>>>> 4226f10 (.)
     logger.info(f"Pipeline complete: {stats}")
     return stats
 
 
 def run_scheduled():
-<<<<<<< HEAD
-    import threading
-=======
->>>>>>> 4226f10 (.)
     from apscheduler.schedulers.background import BackgroundScheduler
     from apscheduler.triggers.cron import CronTrigger
 
@@ -265,8 +233,6 @@ def parse_resume_cmd():
 
 
 if __name__ == "__main__":
-<<<<<<< HEAD
-=======
     # Register Ctrl+C handler before anything else starts
     signal.signal(signal.SIGINT, _signal_handler)
     try:
@@ -274,17 +240,13 @@ if __name__ == "__main__":
     except (AttributeError, ValueError):
         pass  # SIGTERM not available on some platforms
 
->>>>>>> 4226f10 (.)
     parser = argparse.ArgumentParser(description="Apex Job Agent")
     parser.add_argument("--pipeline",  action="store_true", help="Run search pipeline once")
     parser.add_argument("--quick",     action="store_true", help="Quick pipeline mode")
     parser.add_argument("--schedule",  action="store_true", help="Web UI + daily schedule")
     parser.add_argument("--parse",     action="store_true", help="Parse resume.pdf")
-<<<<<<< HEAD
-=======
     parser.add_argument("--dev-ui",    action="store_true",
                         help="Also run the Next.js dev server (hot reload) in this terminal")
->>>>>>> 4226f10 (.)
     args = parser.parse_args()
 
     if args.parse:
@@ -294,8 +256,4 @@ if __name__ == "__main__":
     elif args.schedule:
         run_scheduled()
     else:
-<<<<<<< HEAD
-        start_server()
-=======
         start_server(dev_ui=args.dev_ui)
->>>>>>> 4226f10 (.)

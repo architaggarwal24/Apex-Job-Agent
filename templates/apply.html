@@ -201,8 +201,6 @@ textarea.corr{min-height:65px;resize:vertical}
 let allJobs=[], allSessions={}, selId=null, ws=null, filter='';
 let gwHistory=[], activeGwTab='chat';
 
-<<<<<<< HEAD
-=======
 // Escape untrusted text (scraped job titles/companies, LLM-generated
 // cover letters/interview prep/chat) before interpolating into
 // innerHTML — defends against stored XSS via third-party job data
@@ -214,7 +212,6 @@ function esc(s){
   }[c]));
 }
 
->>>>>>> 4226f10 (.)
 async function loadAll() {
   const [jr, sr] = await Promise.all([
     fetch('/api/jobs?limit=500').then(r=>r.json()).catch(()=>[]),
@@ -248,13 +245,8 @@ function renderList(){
   el.innerHTML=jobs.length?jobs.map(j=>{
     const state=getState(j);
     return`<div class="ji ${j.job_id===selId?'sel':''}" onclick="selectJob('${j.job_id}')">
-<<<<<<< HEAD
-      <div class="ji-title">${j.title}</div>
-      <div class="ji-co">${j.company} · ${j.location||'Remote'}</div>
-=======
       <div class="ji-title">${esc(j.title)}</div>
       <div class="ji-co">${esc(j.company)} · ${esc(j.location)||'Remote'}</div>
->>>>>>> 4226f10 (.)
       <div class="ji-meta">
         <span class="badge ${bc(state)}">${lb(state)}</span>
         ${j.ai_score!=null?`<span class="score-sm">${j.ai_score}/100</span>`:''}
@@ -357,14 +349,6 @@ function renderWorking(state){
 
 function renderMissing(fields,jobId){
   if(!fields.length){ document.getElementById('action').innerHTML=`<div class="working"><span>✅ All fields filled — awaiting screenshot…</span></div>`; return; }
-<<<<<<< HEAD
-  const rows=fields.map(f=>`
-    <div class="mf-item">
-      <div class="mf-lbl">${f.label||f.field_key}</div>
-      ${f.placeholder?`<div class="mf-tried">Agent tried: "${f.placeholder}"</div>`:''}
-      ${f.options?.length?`<select id="mf_${f.field_key}" name="${f.field_key}"><option value="">Select…</option>${f.options.map(o=>`<option>${o}</option>`).join('')}</select>`:`<input type="text" id="mf_${f.field_key}" name="${f.field_key}" placeholder="Enter ${f.label||f.field_key}…">`}
-    </div>`).join('');
-=======
   const rows=fields.map(f=>{
     // field_key feeds into id="mf_..." / name="..." attributes — restrict
     // to a safe identifier charset so it can't break out of the attribute
@@ -384,7 +368,6 @@ function renderMissing(fields,jobId){
       ${input}
     </div>`;
   }).join('');
->>>>>>> 4226f10 (.)
   document.getElementById('action').innerHTML=`
     <div class="action-title">⚠ Missing — ${fields.length} field${fields.length>1?'s':''}</div>
     <div class="action-desc">Answers saved permanently for future applications.</div>
@@ -419,11 +402,7 @@ async function startApply(jobId){ addLog('Starting…'); renderWorking('analyzin
 
 async function submitAnswers(jobId){
   const answers={};
-<<<<<<< HEAD
-  document.querySelectorAll('.mf-grid [name]').forEach(el=>{ if(el.value.trim())answers[el.name]=el.value.trim(); });
-=======
   document.querySelectorAll('.mf-grid [data-key]').forEach(el=>{ if(el.value.trim())answers[el.dataset.key]=el.value.trim(); });
->>>>>>> 4226f10 (.)
   addLog(`Submitting ${Object.keys(answers).length} answers…`); renderWorking('refilling'); updateSteps('refilling');
   await fetch(`/api/apply/answer/${jobId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answers})});
 }
@@ -448,11 +427,7 @@ function gwTab(tab,el){
 function initGhostwriter(job){
   document.getElementById('gw-input-row').style.display=activeGwTab==='chat'?'flex':'none';
   document.getElementById('gw-chat').innerHTML=`
-<<<<<<< HEAD
-    <div class="gw-msg ai">Hi! I'm your AI assistant for **${job.title}** at **${job.company}**. I know the full job description and your profile. How can I help?</div>`;
-=======
     <div class="gw-msg ai">Hi! I'm your AI assistant for **${esc(job.title)}** at **${esc(job.company)}**. I know the full job description and your profile. How can I help?</div>`;
->>>>>>> 4226f10 (.)
   document.getElementById('gw-cover').innerHTML=`
     <div style="display:flex;flex-direction:column;gap:8px">
       <div style="font-size:13px;color:var(--mut)">Generate a tailored cover letter for this job.</div>
@@ -477,9 +452,6 @@ async function sendChat(){
   const msg=input.value.trim(); if(!msg||!selId)return;
   input.value='';
   const chatEl=document.getElementById('gw-chat');
-<<<<<<< HEAD
-  chatEl.innerHTML+=`<div class="gw-msg user">${msg}</div><div class="gw-msg ai" id="gw-typing"><span class="sp" style="width:12px;height:12px"></span></div>`;
-=======
 
   // Build the user message bubble via textContent, not innerHTML —
   // chat input is free-form text and must never be interpreted as HTML
@@ -495,24 +467,15 @@ async function sendChat(){
   typing.innerHTML = '<span class="sp" style="width:12px;height:12px"></span>';
   chatEl.appendChild(typing);
 
->>>>>>> 4226f10 (.)
   chatEl.scrollTop=chatEl.scrollHeight;
   try {
     const r=await fetch(`/api/ghostwriter/chat/${selId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg,history:gwHistory})});
     const d=await r.json();
     gwHistory.push({role:'user',content:msg},{role:'assistant',content:d.response});
-<<<<<<< HEAD
-    document.getElementById('gw-typing').className='gw-msg ai';
-    document.getElementById('gw-typing').id='';
-    document.getElementById('gw-typing') || (chatEl.lastElementChild.textContent=d.response);
-    chatEl.lastElementChild.textContent=d.response;
-  } catch(e){ document.getElementById('gw-typing').textContent='Error — try again'; }
-=======
     typing.className='gw-msg ai';
     typing.removeAttribute('id');
     typing.textContent=d.response;  // textContent — LLM response also untrusted
   } catch(e){ typing.textContent='Error — try again'; }
->>>>>>> 4226f10 (.)
   chatEl.scrollTop=chatEl.scrollHeight;
 }
 
@@ -522,11 +485,7 @@ async function genCoverLetter(jobId){
   try {
     const r=await fetch(`/api/ghostwriter/cover-letter/${jobId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tone})});
     const d=await r.json();
-<<<<<<< HEAD
-    document.getElementById('cl-output').innerHTML=`<div style="background:var(--s2);border:1px solid var(--bdr);border-radius:9px;padding:12px;font-size:13px;line-height:1.6;white-space:pre-wrap;color:var(--txt)">${d.cover_letter}</div><button class="gw-btn" style="margin-top:6px" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)">📋 Copy</button>`;
-=======
     document.getElementById('cl-output').innerHTML=`<div style="background:var(--s2);border:1px solid var(--bdr);border-radius:9px;padding:12px;font-size:13px;line-height:1.6;white-space:pre-wrap;color:var(--txt)">${esc(d.cover_letter)}</div><button class="gw-btn" style="margin-top:6px" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)">📋 Copy</button>`;
->>>>>>> 4226f10 (.)
   } catch(e){ document.getElementById('cl-output').textContent='Generation failed'; }
 }
 
@@ -539,11 +498,7 @@ async function genInterviewPrep(jobId){
     for(const [cat,qs] of Object.entries({Technical:d.technical,Behavioural:d.behavioural,Company:d.company})){
       if(!qs?.length)continue;
       html+=`<div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--acc2);margin-bottom:6px;font-weight:600">${cat}</div>`;
-<<<<<<< HEAD
-      qs.forEach(q=>{ html+=`<div style="background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:10px;margin-bottom:7px"><div style="font-size:13px;font-weight:600;margin-bottom:4px">Q: ${q.question}</div><div style="font-size:12px;color:var(--mut)">${q.answer}</div></div>`; });
-=======
       qs.forEach(q=>{ html+=`<div style="background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:10px;margin-bottom:7px"><div style="font-size:13px;font-weight:600;margin-bottom:4px">Q: ${esc(q.question)}</div><div style="font-size:12px;color:var(--mut)">${esc(q.answer)}</div></div>`; });
->>>>>>> 4226f10 (.)
     }
     document.getElementById('prep-output').innerHTML=html||'No questions generated';
   } catch(e){ document.getElementById('prep-output').textContent='Generation failed'; }

@@ -9,13 +9,9 @@ The settings page in the UI reads/writes here directly.
 All LLM calls read from here first, then fall back to .env.
 """
 
-<<<<<<< HEAD
-import logging
-=======
 import json
 import logging
 import re
->>>>>>> 4226f10 (.)
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -25,9 +21,6 @@ from core.config import cfg
 
 logger = logging.getLogger(__name__)
 
-<<<<<<< HEAD
-# All provider definitions with their fields
-=======
 CUSTOM_PREFIX      = "custom-"     # provider id of a user-added provider: "custom-<slug>"
 MAX_CUSTOM_PROVIDERS = 20
 MAX_EXTRA_MODELS     = 100
@@ -72,23 +65,15 @@ def slugify(label: str) -> str:
 # local tags are the least verifiable from web docs (they depend on what's
 # in the local registry) — if a pull fails, check https://ollama.com/library
 # for the exact current tag.
->>>>>>> 4226f10 (.)
 PROVIDERS = {
     "mistral": {
         "label":    "Mistral AI",
         "url":      "https://console.mistral.ai",
         "models":   [
-<<<<<<< HEAD
-            "mistral-large-latest",
-            "mistral-medium-latest",
-            "mistral-small-latest",
-            "open-mistral-7b",
-=======
             "mistral-large-latest",   # Mistral Large 3 (Dec 2025 release)
             "mistral-medium-latest",  # Medium 3.5 — ~95% of Large's quality, 1/4 the cost
             "mistral-small-latest",   # Small 4 (Mar 2026)
             "ministral-8b-latest",    # tiny/cheap, replaces deprecated open-mistral-7b
->>>>>>> 4226f10 (.)
         ],
         "key_label": "API Key",
         "key_env":   "MISTRAL_API_KEY",
@@ -99,19 +84,11 @@ PROVIDERS = {
         "label":    "NVIDIA NIM",
         "url":      "https://integrate.api.nvidia.com",
         "models":   [
-<<<<<<< HEAD
-            "deepseek-ai/deepseek-v4-flash",
-            "deepseek-ai/deepseek-v4-pro",
-            "moonshotai/kimi-k2-instruct",
-            "meta/llama-3.1-70b-instruct",
-            "mistralai/mistral-large",
-=======
             "deepseek-ai/deepseek-v3.2",                       # current flagship reasoning
             "deepseek-ai/deepseek-v3.1-terminus",              # strong function calling / agentic
             "mistralai/mistral-large-3-675b-instruct-2512",
             "openai/gpt-oss-120b",                             # OpenAI's open-weight release
             "meta/llama-3.1-70b-instruct",
->>>>>>> 4226f10 (.)
         ],
         "key_label": "NIM API Key",
         "key_env":   "NVIDIA_NIM_API_KEY",
@@ -122,21 +99,12 @@ PROVIDERS = {
         "label":    "OpenRouter",
         "url":      "https://openrouter.ai",
         "models":   [
-<<<<<<< HEAD
-            "mistralai/mistral-large",
-            "google/gemma-4-31b-it:free",
-            "qwen/qwen3-coder:free",
-            "deepseek/deepseek-chat",
-            "anthropic/claude-3.5-sonnet",
-            "meta-llama/llama-3.1-70b-instruct",
-=======
             "anthropic/claude-sonnet-5",
             "deepseek/deepseek-v3.2",
             "openai/gpt-oss-120b:free",
             "google/gemma-4-31b-it:free",
             "qwen/qwen3-coder:free",
             "meta-llama/llama-4-maverick",
->>>>>>> 4226f10 (.)
         ],
         "key_label": "API Key",
         "key_env":   "OPENROUTER_API_KEY",
@@ -147,18 +115,11 @@ PROVIDERS = {
         "label":    "Google Gemini",
         "url":      "https://aistudio.google.com/app/apikey",
         "models":   [
-<<<<<<< HEAD
-            "gemini-2.0-flash",
-            "gemini-2.0-flash-lite",
-            "gemini-1.5-pro",
-            "gemini-1.5-flash",
-=======
             "gemini-3-pro-preview",     # flagship reasoning
             "gemini-3-flash-preview",   # current docs-default, fast + cheap
             "gemini-3.1-flash-lite",    # stable (non-preview) since May 2026
             "gemini-2.5-flash",         # still GA — safe baseline, sunsets Oct 16 2026
             "gemini-2.5-flash-lite",
->>>>>>> 4226f10 (.)
         ],
         "key_label": "API Key",
         "key_env":   "GEMINI_API_KEY",
@@ -169,21 +130,12 @@ PROVIDERS = {
         "label":    "Ollama (Local)",
         "url":      "https://ollama.com",
         "models":   [
-<<<<<<< HEAD
-            "qwen2.5:7b",
-            "llama3.1:8b",
-            "llama3.1:70b",
-            "mistral:7b",
-            "deepseek-r1:7b",
-            "phi3:mini",
-=======
             "llama3.3:70b",
             "qwen3:8b",
             "gpt-oss:20b",     # OpenAI's open-weight model, runs locally
             "deepseek-r1:8b",
             "gemma3:12b",
             "phi4:14b",
->>>>>>> 4226f10 (.)
         ],
         "key_label": None,          # No API key needed
         "key_env":   None,
@@ -194,16 +146,10 @@ PROVIDERS = {
         "label":    "Anthropic",
         "url":      "https://console.anthropic.com",
         "models":   [
-<<<<<<< HEAD
-            "claude-sonnet-4-20250514",
-            "claude-haiku-4-5-20251001",
-            "claude-opus-4-6",
-=======
             "claude-sonnet-5",
             "claude-opus-5-5",
             "claude-haiku-4-5-20251001",
             "claude-fable-5-1",
->>>>>>> 4226f10 (.)
         ],
         "key_label": "API Key",
         "key_env":   "ANTHROPIC_API_KEY",
@@ -214,17 +160,10 @@ PROVIDERS = {
         "label":    "OpenAI",
         "url":      "https://platform.openai.com",
         "models":   [
-<<<<<<< HEAD
-            "gpt-4o",
-            "gpt-4o-mini",
-            "gpt-4-turbo",
-            "gpt-3.5-turbo",
-=======
             "gpt-5.6-sol",     # flagship
             "gpt-5.6-terra",   # balanced quality/cost (~half the cost of Sol)
             "gpt-5.6-luna",    # fastest/cheapest tier
             "gpt-5-mini",
->>>>>>> 4226f10 (.)
         ],
         "key_label": "API Key",
         "key_env":   "OPENAI_API_KEY",
@@ -241,22 +180,6 @@ DEFAULT_SETTINGS = [
     ("llm_temperature",  "0.1",      "llm",     "Temperature"),
     # Per-provider keys & models
     ("mistral_api_key",      "",                       "llm_keys", "Mistral API Key"),
-<<<<<<< HEAD
-    ("mistral_model",        "mistral-large-latest",   "llm_keys", "Mistral Model"),
-    ("nvidia_api_key",       "",                       "llm_keys", "NVIDIA NIM API Key"),
-    ("nvidia_model",         "deepseek-ai/deepseek-v4-flash", "llm_keys", "NVIDIA Model"),
-    ("nvidia_base_url",      "https://integrate.api.nvidia.com/v1", "llm_keys", "NVIDIA Base URL"),
-    ("openrouter_api_key",   "",                       "llm_keys", "OpenRouter API Key"),
-    ("openrouter_model",     "mistralai/mistral-large","llm_keys", "OpenRouter Model"),
-    ("gemini_api_key",       "",                       "llm_keys", "Gemini API Key"),
-    ("gemini_model",         "gemini-2.0-flash",       "llm_keys", "Gemini Model"),
-    ("ollama_model",         "qwen2.5:7b",             "llm_keys", "Ollama Model"),
-    ("ollama_base_url",      "http://localhost:11434/v1","llm_keys","Ollama Base URL"),
-    ("anthropic_api_key",    "",                       "llm_keys", "Anthropic API Key"),
-    ("anthropic_model",      "claude-sonnet-4-20250514","llm_keys","Anthropic Model"),
-    ("openai_api_key",       "",                       "llm_keys", "OpenAI API Key"),
-    ("openai_model",         "gpt-4o",                 "llm_keys", "OpenAI Model"),
-=======
     ("mistral_model",        "mistral-medium-latest",  "llm_keys", "Mistral Model"),
     ("nvidia_api_key",       "",                       "llm_keys", "NVIDIA NIM API Key"),
     ("nvidia_model",         "deepseek-ai/deepseek-v3.2", "llm_keys", "NVIDIA Model"),
@@ -271,24 +194,18 @@ DEFAULT_SETTINGS = [
     ("anthropic_model",      "claude-sonnet-5",        "llm_keys","Anthropic Model"),
     ("openai_api_key",       "",                       "llm_keys", "OpenAI API Key"),
     ("openai_model",         "gpt-5.6-terra",          "llm_keys", "OpenAI Model"),
->>>>>>> 4226f10 (.)
     ("openai_base_url",      "https://api.openai.com/v1","llm_keys","OpenAI Base URL"),
     # Browser
     ("browser_headless", "false", "browser", "Headless Mode"),
     ("browser_slow_mo",  "60",    "browser", "Slow Mo (ms)"),
     # Agent
     ("dry_run",                    "false", "agent", "Dry Run Mode"),
-<<<<<<< HEAD
-    ("daily_apply_limit",          "30",    "agent", "Daily Apply Limit"),
-    ("auto_skip_score_threshold",  "30",    "agent", "Auto-Skip Score Threshold"),
-=======
     ("quality_first",              "true",  "agent", "Quality First"),
     ("daily_apply_limit",          "30",    "agent", "Daily Apply Limit"),
     ("auto_skip_score_threshold",  "30",    "agent", "Auto-Skip Score Threshold"),
     ("enable_llm_scoring",          "false", "agent", "Enable AI Job Scoring"),
     ("company_blacklist",          "",      "agent", "Company Blacklist"),
     ("min_salary_lpa",             "0",     "agent", "Min Salary (LPA)"),
->>>>>>> 4226f10 (.)
     ("min_delay_between_applies",  "45",    "agent", "Min Delay Between Applies (s)"),
     ("max_delay_between_applies",  "120",   "agent", "Max Delay Between Applies (s)"),
 ]
@@ -346,8 +263,6 @@ class SettingsDB:
                 """, (key, default, category, label, now))
             # Migrate from .env if keys exist there but not in DB
             self._migrate_from_env(c)
-<<<<<<< HEAD
-=======
             self._clear_placeholder_keys(c)
 
     def _clear_placeholder_keys(self, conn):
@@ -361,7 +276,6 @@ class SettingsDB:
             if looks_like_placeholder(decrypt(r["value"])):
                 conn.execute("UPDATE settings SET value='' WHERE key=?", (r["key"],))
                 logger.info(f"[Settings] Cleared placeholder value for {r['key']}")
->>>>>>> 4226f10 (.)
 
     def _migrate_from_env(self, conn):
         """One-time: import existing .env API keys into settings DB."""
@@ -387,21 +301,12 @@ class SettingsDB:
         now = datetime.now().isoformat()
         for env_key, db_key in env_map.items():
             val = os.getenv(env_key, "")
-<<<<<<< HEAD
-            if val:
-=======
             if val and not looks_like_placeholder(val):
->>>>>>> 4226f10 (.)
                 # Only overwrite if DB value is still the default/empty
                 row = conn.execute(
                     "SELECT value FROM settings WHERE key=?", (db_key,)
                 ).fetchone()
                 if row and not row["value"]:
-<<<<<<< HEAD
-                    conn.execute(
-                        "UPDATE settings SET value=?, updated_at=? WHERE key=?",
-                        (val, now, db_key)
-=======
                     stored = val
                     if "api_key" in db_key:
                         from core.crypto import encrypt
@@ -409,17 +314,10 @@ class SettingsDB:
                     conn.execute(
                         "UPDATE settings SET value=?, updated_at=? WHERE key=?",
                         (stored, now, db_key)
->>>>>>> 4226f10 (.)
                     )
 
     # ── Read ──────────────────────────────────────────────────────
 
-<<<<<<< HEAD
-    def read(self, key: str, default: str = "") -> str:
-        with self._conn() as c:
-            r = c.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
-            return r["value"] if r else default
-=======
     @staticmethod
     def _maybe_decrypt(key: str, value: str) -> str:
         """API keys are stored encrypted (see write()) — decrypt them
@@ -437,16 +335,11 @@ class SettingsDB:
             if not r:
                 return default
             return self._maybe_decrypt(key, r["value"])
->>>>>>> 4226f10 (.)
 
     def read_all(self) -> dict[str, str]:
         with self._conn() as c:
             rows = c.execute("SELECT key, value FROM settings").fetchall()
-<<<<<<< HEAD
-            return {r["key"]: r["value"] for r in rows}
-=======
             return {r["key"]: self._maybe_decrypt(r["key"], r["value"]) for r in rows}
->>>>>>> 4226f10 (.)
 
     def read_by_category(self) -> dict[str, list[dict]]:
         with self._conn() as c:
@@ -456,107 +349,63 @@ class SettingsDB:
         out: dict[str, list] = {}
         for r in rows:
             out.setdefault(r["category"], []).append({
-<<<<<<< HEAD
-                "key": r["key"], "value": r["value"],
-=======
                 "key": r["key"], "value": self._maybe_decrypt(r["key"], r["value"]),
->>>>>>> 4226f10 (.)
                 "label": r["label"],
             })
         return out
 
-<<<<<<< HEAD
-    def llm_config(self) -> dict:
-        """Return complete LLM config for the active provider."""
-        s        = self.read_all()
-        provider = s.get("llm_provider", "mistral").lower().strip()
-=======
     def llm_config(self, provider: str | None = None) -> dict:
         """Complete LLM config for `provider` (default: the active one). Taking an
         explicit provider is what lets the Settings screen test or list models
         for the card you're looking at without switching the app over to it."""
         s        = self.read_all()
         provider = (provider or s.get("llm_provider", "mistral")).lower().strip()
->>>>>>> 4226f10 (.)
 
         configs = {
             "mistral": {
                 "type":     "openai_compat",
                 "api_key":  s.get("mistral_api_key", ""),
-<<<<<<< HEAD
-                "model":    s.get("mistral_model", "mistral-large-latest"),
-=======
                 "model":    s.get("mistral_model", "mistral-medium-latest"),
->>>>>>> 4226f10 (.)
                 "base_url": "https://api.mistral.ai/v1",
             },
             "nvidia": {
                 "type":     "openai_compat",
                 "api_key":  s.get("nvidia_api_key", ""),
-<<<<<<< HEAD
-                "model":    s.get("nvidia_model", "deepseek-ai/deepseek-v4-flash"),
-=======
                 "model":    s.get("nvidia_model", "deepseek-ai/deepseek-v3.2"),
->>>>>>> 4226f10 (.)
                 "base_url": s.get("nvidia_base_url", "https://integrate.api.nvidia.com/v1"),
             },
             "openrouter": {
                 "type":     "openai_compat",
                 "api_key":  s.get("openrouter_api_key", ""),
-<<<<<<< HEAD
-                "model":    s.get("openrouter_model", "mistralai/mistral-large"),
-=======
                 "model":    s.get("openrouter_model", "deepseek/deepseek-v3.2"),
->>>>>>> 4226f10 (.)
                 "base_url": "https://openrouter.ai/api/v1",
             },
             "gemini": {
                 "type":     "gemini",
                 "api_key":  s.get("gemini_api_key", ""),
-<<<<<<< HEAD
-                "model":    s.get("gemini_model", "gemini-2.0-flash"),
-=======
                 "model":    s.get("gemini_model", "gemini-3-flash-preview"),
->>>>>>> 4226f10 (.)
                 "base_url": None,
             },
             "ollama": {
                 "type":     "openai_compat",
                 "api_key":  "ollama",
-<<<<<<< HEAD
-                "model":    s.get("ollama_model", "qwen2.5:7b"),
-=======
                 "model":    s.get("ollama_model", "qwen3:8b"),
->>>>>>> 4226f10 (.)
                 "base_url": s.get("ollama_base_url", "http://localhost:11434/v1"),
             },
             "anthropic": {
                 "type":     "anthropic",
                 "api_key":  s.get("anthropic_api_key", ""),
-<<<<<<< HEAD
-                "model":    s.get("anthropic_model", "claude-sonnet-4-20250514"),
-=======
                 "model":    s.get("anthropic_model", "claude-sonnet-5"),
->>>>>>> 4226f10 (.)
                 "base_url": None,
             },
             "openai": {
                 "type":     "openai_compat",
                 "api_key":  s.get("openai_api_key", ""),
-<<<<<<< HEAD
-                "model":    s.get("openai_model", "gpt-4o"),
-=======
                 "model":    s.get("openai_model", "gpt-5.6-terra"),
->>>>>>> 4226f10 (.)
                 "base_url": s.get("openai_base_url", "https://api.openai.com/v1"),
             },
         }
 
-<<<<<<< HEAD
-        cfg_data = configs.get(provider, configs["mistral"])
-        cfg_data["provider"]    = provider
-        cfg_data["temperature"] = float(s.get("llm_temperature", "0.1"))
-=======
         temperature = float(s.get("llm_temperature", "0.1"))
 
         if provider.startswith(CUSTOM_PREFIX):
@@ -587,14 +436,10 @@ class SettingsDB:
         cfg_data["provider"]    = provider
         cfg_data["label"]       = PROVIDERS[provider]["label"]
         cfg_data["temperature"] = temperature
->>>>>>> 4226f10 (.)
         return cfg_data
 
     def provider_info(self) -> dict:
         c = self.llm_config()
-<<<<<<< HEAD
-        return {"provider": c["provider"], "model": c["model"]}
-=======
         return {"provider": c["provider"], "model": c["model"], "label": c.get("label", c["provider"])}
 
     # ── Custom (OpenAI-compatible) providers ───────────────────────
@@ -753,18 +598,14 @@ class SettingsDB:
             return int(self.read("auto_skip_score_threshold", "30"))
         except ValueError:
             return 30
->>>>>>> 4226f10 (.)
 
     # ── Write ─────────────────────────────────────────────────────
 
     def write(self, key: str, value: str):
         now = datetime.now().isoformat()
-<<<<<<< HEAD
-=======
         if "api_key" in key and value:
             from core.crypto import encrypt
             value = encrypt(value)
->>>>>>> 4226f10 (.)
         with self._conn() as c:
             c.execute("""
                 INSERT INTO settings (key, value, category, label, updated_at)

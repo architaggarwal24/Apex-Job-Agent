@@ -12,17 +12,11 @@ tracking/pipeline.py — Job search + intelligence pipeline.
 import json
 import logging
 import random
-<<<<<<< HEAD
-import time
-
-from core.config   import cfg
-=======
 import threading
 import time
 
 from core.config   import cfg
 from core.shutdown import CancelEvent
->>>>>>> 4226f10 (.)
 from db.jobs_db    import JobsDB
 from db.profile_db import ProfileDB
 
@@ -31,10 +25,7 @@ logger = logging.getLogger(__name__)
 SCRAPERS = {
     "linkedin": "scraper.linkedin",
     "indeed":   "scraper.indeed",
-<<<<<<< HEAD
-=======
     "naukri":   "scraper.naukri",
->>>>>>> 4226f10 (.)
 }
 
 
@@ -42,10 +33,7 @@ def run(
     platforms: list[str] | None = None,
     quick_mode: bool = False,
     emit=None,
-<<<<<<< HEAD
-=======
     cancel_event: CancelEvent | None = None,
->>>>>>> 4226f10 (.)
 ) -> dict:
     """
     Full search + intelligence pipeline.
@@ -90,12 +78,9 @@ def run(
 
     with sync_playwright() as pw:
         for platform in active_platforms:
-<<<<<<< HEAD
-=======
             if cancel_event and cancel_event.is_set():
                 _log(emit, "Pipeline cancelled — stopping before scraping more platforms")
                 break
->>>>>>> 4226f10 (.)
             if platform not in SCRAPERS:
                 logger.warning(f"Unknown platform: {platform}")
                 continue
@@ -131,15 +116,6 @@ def run(
 
     # ── Score ─────────────────────────────────────────────────────
     to_score = [j for j in new_jobs if j.get("job_id")]
-<<<<<<< HEAD
-    if to_score:
-        _log(emit, f"Scoring {len(to_score)} jobs with AI...")
-        from intelligence.scorer import score_jobs_batch
-        scored = score_jobs_batch(to_score, profile, jobs_db=jobs_db)
-        auto_skipped = sum(1 for j in scored if j.get("auto_skip"))
-        _log(emit, f"Scoring done — {len(scored)-auto_skipped} queued, "
-                   f"{auto_skipped} auto-skipped (score < {cfg.AUTO_SKIP_SCORE_THRESHOLD})")
-=======
     if to_score and not (cancel_event and cancel_event.is_set()):
         _log(emit, f"Scoring {len(to_score)} jobs with AI...")
         from intelligence.scorer import score_jobs_batch
@@ -149,7 +125,6 @@ def run(
         from intelligence.scorer import _auto_skip_threshold
         _log(emit, f"Scoring done — {len(scored)-auto_skipped} queued, "
                    f"{auto_skipped} auto-skipped (score < {_auto_skip_threshold()})")
->>>>>>> 4226f10 (.)
     else:
         scored, auto_skipped = [], 0
 
@@ -160,12 +135,6 @@ def run(
         key=lambda j: j.get("ai_score", 0), reverse=True
     )[:10]
 
-<<<<<<< HEAD
-    if top_jobs:
-        _log(emit, f"Generating AI briefs for top {len(top_jobs)} jobs...")
-        from intelligence.briefer import generate_and_save
-        for job in top_jobs:
-=======
     if top_jobs and not (cancel_event and cancel_event.is_set()):
         _log(emit, f"Generating AI briefs for top {len(top_jobs)} jobs...")
         from intelligence.briefer import generate_and_save
@@ -173,7 +142,6 @@ def run(
             if cancel_event and cancel_event.is_set():
                 _log(emit, "Pipeline cancelled — stopping brief generation")
                 break
->>>>>>> 4226f10 (.)
             try:
                 generate_and_save(job, profile, jobs_db)
             except Exception as e:
@@ -187,10 +155,7 @@ def run(
         "scored":        len(to_score),
         "auto_skipped":  auto_skipped,
         "briefed":       len(top_jobs),
-<<<<<<< HEAD
-=======
         "cancelled":     bool(cancel_event and cancel_event.is_set()),
->>>>>>> 4226f10 (.)
         "by_platform":   {p: sum(1 for j in all_jobs if j.get("source") == p)
                          for p in active_platforms},
     }

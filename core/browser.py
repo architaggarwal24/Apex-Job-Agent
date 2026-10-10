@@ -1,18 +1,11 @@
 """
 core/browser.py — Playwright browser management.
 
-<<<<<<< HEAD
-Uses Opera with a persistent profile so all login sessions
-(LinkedIn, Indeed) are preserved between runs.
-
-Key: ignore_default_args strips Playwright's session-breaking flags.
-=======
 Login strategy: no credentials stored anywhere.
 The agent uses Opera's existing logged-in sessions.
 If a session has expired, it opens the login page and
 waits for the user to log in manually (up to 90 seconds).
 Cookies are saved after each successful login for future runs.
->>>>>>> 4226f10 (.)
 """
 
 import json
@@ -29,14 +22,8 @@ logger = logging.getLogger(__name__)
 
 def launch_browser(playwright):
     """
-<<<<<<< HEAD
-    Launch Opera with the persistent user profile.
-    ignore_default_args prevents Playwright from injecting flags that
-    disable extensions/sync and wipe saved login sessions.
-=======
     Launch Opera with persistent profile.
     ignore_default_args keeps your saved sessions alive.
->>>>>>> 4226f10 (.)
     """
     exe  = cfg.opera_exe()
     data = cfg.opera_data()
@@ -46,11 +33,7 @@ def launch_browser(playwright):
     if not os.path.exists(exe):
         raise FileNotFoundError(f"Opera not found at: {exe}")
 
-<<<<<<< HEAD
-    # Warn if Opera is already running
-=======
     # Warn if Opera is already open
->>>>>>> 4226f10 (.)
     try:
         import subprocess
         out = subprocess.check_output("tasklist", shell=True, text=True,
@@ -60,9 +43,6 @@ def launch_browser(playwright):
     except Exception:
         pass
 
-<<<<<<< HEAD
-    logger.info(f"[Browser] Launching Opera: {exe}")
-=======
     logger.info(f"[Browser] Launching Opera")
 
     # Read headless + slow_mo from SettingsDB if available, else .env
@@ -75,19 +55,12 @@ def launch_browser(playwright):
         slow_mo  = int(s.read("browser_slow_mo", "60"))
     except Exception:
         pass
->>>>>>> 4226f10 (.)
 
     ctx = playwright.chromium.launch_persistent_context(
         user_data_dir=data,
         executable_path=exe,
-<<<<<<< HEAD
-        headless=cfg.BROWSER_HEADLESS,
-        slow_mo=cfg.BROWSER_SLOW_MO,
-        # Strip session-breaking flags injected by Playwright by default
-=======
         headless=headless,
         slow_mo=slow_mo,
->>>>>>> 4226f10 (.)
         ignore_default_args=[
             "--disable-extensions",
             "--disable-background-networking",
@@ -118,20 +91,10 @@ def launch_browser(playwright):
 
 
 def get_page(ctx):
-<<<<<<< HEAD
-    """Return first existing tab or open a new one."""
-=======
->>>>>>> 4226f10 (.)
     return ctx.pages[0] if ctx.pages else ctx.new_page()
 
 
 def load_cookies(ctx, path: Path):
-<<<<<<< HEAD
-    """Load saved cookies into context."""
-    if path.exists():
-        try:
-            cookies = json.loads(path.read_text())
-=======
     """
     Cookies are stored encrypted at rest (see save_cookies) — a saved
     LinkedIn/Indeed/Naukri session is a live login, functionally
@@ -145,7 +108,6 @@ def load_cookies(ctx, path: Path):
             from core.crypto import decrypt_bytes
             raw = decrypt_bytes(path.read_bytes())
             cookies = json.loads(raw.decode())
->>>>>>> 4226f10 (.)
             ctx.add_cookies(cookies)
             logger.debug(f"[Browser] Loaded {len(cookies)} cookies from {path.name}")
         except Exception as e:
@@ -153,15 +115,6 @@ def load_cookies(ctx, path: Path):
 
 
 def save_cookies(ctx, path: Path, domain_filter: str = ""):
-<<<<<<< HEAD
-    """Save context cookies to disk, optionally filtering by domain."""
-    try:
-        cookies = ctx.cookies()
-        if domain_filter:
-            cookies = [c for c in cookies if domain_filter in c.get("domain", "")]
-        path.write_text(json.dumps(cookies, indent=2))
-        logger.debug(f"[Browser] Saved {len(cookies)} cookies to {path.name}")
-=======
     try:
         from core.crypto import encrypt_bytes
         cookies = ctx.cookies()
@@ -170,27 +123,10 @@ def save_cookies(ctx, path: Path, domain_filter: str = ""):
         payload = json.dumps(cookies, indent=2).encode()
         path.write_bytes(encrypt_bytes(payload))
         logger.debug(f"[Browser] Saved {len(cookies)} cookies → {path.name} (encrypted)")
->>>>>>> 4226f10 (.)
     except Exception as e:
         logger.debug(f"[Browser] Cookie save error: {e}")
 
 
-<<<<<<< HEAD
-def detect_captcha(page) -> bool:
-    for sel in ["iframe[src*='captcha']", "iframe[src*='recaptcha']",
-                "iframe[src*='hcaptcha']", "#captcha", "div.g-recaptcha", "#px-captcha"]:
-        try:
-            if page.query_selector(sel):
-                return True
-        except Exception:
-            pass
-    try:
-        body = page.inner_text("body")[:500].lower()
-        if any(k in body for k in ["captcha", "verify you are human", "i am not a robot"]):
-            return True
-    except Exception:
-        pass
-=======
 def wait_for_manual_login(page, check_fn, platform: str,
                            timeout: int = 90) -> bool:
     """
@@ -264,30 +200,16 @@ def detect_captcha(page) -> bool:
     except Exception:
         pass
 
->>>>>>> 4226f10 (.)
     return False
 
 
 def is_login_wall(page) -> bool:
-<<<<<<< HEAD
-    """True if page is blocking access with a login requirement."""
-    url = page.url.lower()
-    # Hard blocks only — don't flag normal login redirects that resolve
-    if any(p in url for p in ["/403", "/404", "access-denied",
-                                "account-suspended", "checkpoint/challenge"]):
-        return True
-    try:
-        body = page.inner_text("body")[:300].lower()
-        if any(k in body for k in ["403 forbidden", "404 not found",
-                                    "access denied", "page not found"]):
-=======
     url = page.url.lower()
     if any(p in url for p in ["/403", "/404", "access-denied", "checkpoint/challenge"]):
         return True
     try:
         body = page.inner_text("body")[:300].lower()
         if any(k in body for k in ["403 forbidden", "404 not found", "access denied"]):
->>>>>>> 4226f10 (.)
             return True
     except Exception:
         pass

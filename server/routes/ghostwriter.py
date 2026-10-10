@@ -1,9 +1,5 @@
 """
 server/routes/ghostwriter.py — AI assistant API routes.
-<<<<<<< HEAD
-"""
-
-=======
 
 All routes that call into intelligence/ghostwriter.py use
 core.llm.run_blocking() since those functions make blocking LLM
@@ -13,27 +9,20 @@ FastAPI event loop, including WebSocket pings and other requests.
 """
 
 import asyncio
->>>>>>> 4226f10 (.)
 import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
-<<<<<<< HEAD
-=======
 from core.llm   import run_blocking
->>>>>>> 4226f10 (.)
 from db.jobs_db    import JobsDB
 from db.profile_db import ProfileDB
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-<<<<<<< HEAD
-=======
 MAX_HISTORY_MESSAGES = 40
 MAX_MESSAGE_CHARS    = 8_000
 
->>>>>>> 4226f10 (.)
 
 def _get_job_and_profile(job_id: str):
     db  = JobsDB()
@@ -44,8 +33,6 @@ def _get_job_and_profile(job_id: str):
     return job, profile, db
 
 
-<<<<<<< HEAD
-=======
 def _sanitize_history(raw) -> list[dict]:
     """
     Validate and sanitize chat history sent by the client before it's
@@ -80,7 +67,6 @@ def _sanitize_history(raw) -> list[dict]:
     return clean[-MAX_HISTORY_MESSAGES:]
 
 
->>>>>>> 4226f10 (.)
 @router.post("/api/ghostwriter/cover-letter/{job_id}")
 async def cover_letter(job_id: str, data: dict = None):
     """Generate a tailored cover letter for this job."""
@@ -88,14 +74,10 @@ async def cover_letter(job_id: str, data: dict = None):
     tone = (data or {}).get("tone", "professional")
 
     from intelligence.ghostwriter import cover_letter as gw_cl
-<<<<<<< HEAD
-    letter = gw_cl(job, profile, jobs_db=db, tone=tone)
-=======
     try:
         letter = await run_blocking(gw_cl, job, profile, jobs_db=db, tone=tone)
     except asyncio.TimeoutError:
         raise HTTPException(504, "Cover letter generation timed out")
->>>>>>> 4226f10 (.)
     if not letter:
         raise HTTPException(500, "Cover letter generation failed")
     return JSONResponse({"cover_letter": letter})
@@ -107,14 +89,10 @@ async def interview_prep(job_id: str):
     job, profile, db = _get_job_and_profile(job_id)
 
     from intelligence.ghostwriter import interview_prep as gw_prep
-<<<<<<< HEAD
-    result = gw_prep(job, profile, jobs_db=db)
-=======
     try:
         result = await run_blocking(gw_prep, job, profile, jobs_db=db)
     except asyncio.TimeoutError:
         raise HTTPException(504, "Interview prep generation timed out")
->>>>>>> 4226f10 (.)
     return JSONResponse(result)
 
 
@@ -122,43 +100,28 @@ async def interview_prep(job_id: str):
 async def chat(job_id: str, data: dict):
     """Free-form chat with job + profile context."""
     message = data.get("message", "").strip()
-<<<<<<< HEAD
-    history = data.get("history", [])
-
-    if not message:
-        raise HTTPException(400, "Message cannot be empty")
-=======
     history = _sanitize_history(data.get("history", []))
 
     if not message:
         raise HTTPException(400, "Message cannot be empty")
     if len(message) > MAX_MESSAGE_CHARS:
         message = message[:MAX_MESSAGE_CHARS]
->>>>>>> 4226f10 (.)
 
     job, profile, db = _get_job_and_profile(job_id)
 
     from intelligence.ghostwriter import chat as gw_chat
-<<<<<<< HEAD
-    response = gw_chat(message, job, profile, history=history, jobs_db=db)
-=======
     try:
         response = await run_blocking(gw_chat, message, job, profile,
                                        history=history, jobs_db=db)
     except asyncio.TimeoutError:
         raise HTTPException(504, "Chat response timed out")
->>>>>>> 4226f10 (.)
     return JSONResponse({"response": response})
 
 
 @router.get("/api/ghostwriter/context/{job_id}")
 async def get_context(job_id: str):
-<<<<<<< HEAD
-    """Return the full context that the ghostwriter uses for this job."""
-=======
     """Return the full context that the ghostwriter uses for this job.
     Pure local computation — no LLM call, no run_blocking needed."""
->>>>>>> 4226f10 (.)
     job, profile, db = _get_job_and_profile(job_id)
 
     from intelligence.ghostwriter import build_context

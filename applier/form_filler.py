@@ -36,16 +36,6 @@ def _resolve(page, f: FormField):
     return None, None
 
 
-<<<<<<< HEAD
-def _fallbacks(f: FormField) -> list[str]:
-    key   = f.field_key
-    alts  = []
-    for attr in ("name", "id", "data-field", "aria-label"):
-        alts += [f"[{attr}='{key}']", f"[{attr}*='{key}' i]"]
-    if f.label:
-        alts += [f"input[placeholder*='{f.label}' i]",
-                 f"textarea[placeholder*='{f.label}' i]"]
-=======
 def _css_escape_attr(value: str) -> str | None:
     """
     Escape a value for safe use inside a CSS attribute selector's
@@ -87,7 +77,6 @@ def _fallbacks(f: FormField) -> list[str]:
         alts += [f"input[placeholder*='{label}' i]",
                  f"textarea[placeholder*='{label}' i]"]
 
->>>>>>> 4226f10 (.)
     type_map = {
         "email":  ["input[type='email']"],
         "tel":    ["input[type='tel']", "input[name*='phone' i]", "input[name*='mobile' i]"],

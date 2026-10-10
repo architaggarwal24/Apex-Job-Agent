@@ -37,9 +37,11 @@ from db.jobs_db import JobsDB
 
 class Field:
     """A FormField look-alike."""
-    def __init__(self, label, key="", field_type="text", options=None, db_value="", manual=False):
+    def __init__(self, label, key="", field_type="text", options=None, db_value="", manual=False,
+                 required=False, placeholder=""):
         self.label, self.field_key, self.field_type = label, key, field_type
-        self.options, self.db_value, self.needs_manual, self.placeholder = options or [], db_value, manual, ""
+        self.options, self.db_value, self.needs_manual = options or [], db_value, manual
+        self.is_required, self.placeholder = required, placeholder
 
 
 class Analysis:
@@ -725,6 +727,57 @@ class FormCodeTests(Base):
             result = universal.run_application(FakePage(), self.JOB, {}, emit=self.emit, answers=bad)
         self.assertTrue(result["success"])
         self.assertEqual(self.filled[0], [("Expected CTC", "18", False)])
+
+    def test_the_result_carries_a_snapshot_of_every_field_for_the_review(self):
+        self.alice.add("Valid passport", "Yes")
+        self.fields = [Field("Valid passport?", "p", manual=True), Field("Expected CTC", "c", db_value="18"),
+                       Field("Preferred pronouns", "pro", placeholder="Prefer not to say"),
+                       Field("Resume", "cv", "file"), Field("  ", "blank", db_value="x")]
+        self.fields[1].is_required = True
+        page = FakePage()
+        page.url = "https://example.com/apply/step/1"
+        result = universal.run_application(page, self.JOB, {}, emit=self.emit, answers=self.ctx())
+        review = result["review"]
+        self.assertEqual(review["url"], "https://example.com/apply/step/1")
+        by = {f["label"]: f for f in review["fields"]}
+        self.assertEqual(set(by), {"Valid passport?", "Expected CTC", "Preferred pronouns"},
+                         "file uploads and blank labels are not fields to review")
+        self.assertEqual((by["Valid passport?"]["value"], by["Valid passport?"]["hit"]["source"],
+                          by["Valid passport?"]["hit"]["action"]), ("Yes", "user", "filled"))
+        self.assertEqual((by["Expected CTC"]["value"], by["Expected CTC"]["required"], by["Expected CTC"]["hit"]),
+                         ("18", True, None))
+        self.assertEqual((by["Preferred pronouns"]["value"], by["Preferred pronouns"]["required"]),
+                         ("Prefer not to say", False), "the analyser's placeholder counts as the value")
+        self.assertEqual({f["page"] for f in review["fields"]}, {1})
+        self.assertEqual(set(by["Expected CTC"]), {"label", "field_key", "type", "value", "options", "required",
+                                                   "page", "hit"})
+
+    def test_a_form_with_several_pages_reports_the_fields_of_all_of_them(self):
+        pages = [[Field("Name", "n", db_value="Sam")], [Field("Expected CTC", "c", db_value="20")],
+                 [Field("Notice period", "np", db_value="30 days")]]
+        turns = iter(range(10))
+        current = {"page": 0}
+        def analyze(**k):
+            self.analysis = Analysis(*pages[current["page"]])
+            return self.analysis
+        def click_next(page, analysis):
+            if current["page"] < 2:
+                current["page"] += 1
+                return True
+            return False
+        with mock.patch.object(universal, "analyze", analyze), mock.patch.object(universal, "click_next", click_next):
+            result = universal.run_application(FakePage(), self.JOB, {}, emit=self.emit, answers=self.ctx())
+        self.assertEqual([(f["label"], f["page"]) for f in result["review"]["fields"]],
+                         [("Name", 1), ("Expected CTC", 2), ("Notice period", 3)])
+
+    def test_the_second_pass_reports_what_it_refilled(self):
+        self.alice.add("Expected CTC", "24 LPA")
+        self.fields = [Field("Expected CTC", "c", manual=True)]
+        with mock.patch.object(universal, "execute", lambda page, analysis, **k: ([], [])):
+            result = universal.run_iteration2(FakePage(), self.JOB, {}, ["c"], emit=self.emit, answers=self.ctx())
+        (f,) = result["review"]["fields"]
+        self.assertEqual((f["label"], f["value"], f["hit"]["source"]), ("Expected CTC", "24 LPA", "user"))
+        self.assertEqual(result["review"]["url"], "https://example.com/apply")
 
     def test_nothing_is_reported_when_the_bank_had_nothing_to_say(self):
         self.fields = [Field("Nothing like this in the bank", "x", manual=True)]

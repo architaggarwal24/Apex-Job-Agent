@@ -1,13 +1,6 @@
 """
 scraper/linkedin.py — LinkedIn job scraper.
 
-<<<<<<< HEAD
-Scrapes ALL LinkedIn jobs matching the user's positions + locations.
-No Easy Apply filter — any job with a URL is stored.
-Apply flow is handled by applier/universal.py.
-
-Login persistence via cookie storage.
-=======
 Login strategy (no credentials stored):
   1. Load saved cookies from data/cookies/linkedin.json
   2. Navigate to /feed — if logged in, proceed
@@ -17,7 +10,6 @@ Login strategy (no credentials stored):
 
 This means you log in once in the browser, and every subsequent
 run reuses your session automatically.
->>>>>>> 4226f10 (.)
 """
 
 import json
@@ -28,27 +20,15 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from core.config  import cfg
-<<<<<<< HEAD
-from core.browser import (detect_captcha, scroll_to_bottom,
-                           load_cookies, save_cookies, human_delay)
-
-logger = logging.getLogger(__name__)
-
-=======
 from core.browser import detect_captcha, scroll_to_bottom, load_cookies, save_cookies, human_delay
 
 logger   = logging.getLogger(__name__)
->>>>>>> 4226f10 (.)
 MAX_PAGES    = 5
 COOKIES_PATH = cfg.COOKIES_DIR / "linkedin.json"
 
 
 def scrape(playwright, profile: dict,
            job_titles: list[str], locations: list[str]) -> list[dict]:
-<<<<<<< HEAD
-    """Scrape LinkedIn for all matching jobs. Returns list of job dicts."""
-=======
->>>>>>> 4226f10 (.)
     from core.browser import launch_browser, get_page
 
     results: list[dict] = []
@@ -70,11 +50,7 @@ def scrape(playwright, profile: dict,
         for title in job_titles:
             for location in locations:
                 logger.info(f"  [LinkedIn] '{title}' in '{location}'")
-<<<<<<< HEAD
-                jobs = _search(page, title, location)
-=======
                 jobs = _search(page, title, location, ctx=ctx)
->>>>>>> 4226f10 (.)
                 results.extend(jobs)
                 human_delay(3, 6)
 
@@ -84,65 +60,21 @@ def scrape(playwright, profile: dict,
         try: ctx.close()
         except Exception: pass
 
-<<<<<<< HEAD
-    logger.info(f"  [LinkedIn] Total: {len(results)} jobs found")
-=======
     logger.info(f"  [LinkedIn] Total: {len(results)} jobs")
->>>>>>> 4226f10 (.)
     return results
 
 
 def _ensure_logged_in(page, ctx) -> bool:
-<<<<<<< HEAD
-=======
     """
     Check login status. If not logged in, open the login page
     and wait for the user to log in manually (no credentials needed).
     Saves cookies after successful login.
     """
->>>>>>> 4226f10 (.)
     try:
         page.goto("https://www.linkedin.com/feed",
                   timeout=20000, wait_until="domcontentloaded")
         time.sleep(2)
 
-<<<<<<< HEAD
-        if "feed" in page.url or "mynetwork" in page.url:
-            logger.info("  [LinkedIn] Already logged in ✓")
-            return True
-
-        if not cfg.LINKEDIN_EMAIL or not cfg.LINKEDIN_PASSWORD:
-            logger.warning("  [LinkedIn] No credentials — log in to LinkedIn in Opera first")
-            return False
-
-        page.goto("https://www.linkedin.com/login", timeout=20000)
-        time.sleep(2)
-        page.fill("input#username", cfg.LINKEDIN_EMAIL)
-        human_delay(0.4, 0.8)
-        page.fill("input#password", cfg.LINKEDIN_PASSWORD)
-        human_delay(0.4, 0.8)
-        page.click("button[type='submit']")
-        time.sleep(5)
-
-        if detect_captcha(page):
-            logger.warning("  [LinkedIn] CAPTCHA after login")
-            return False
-
-        if "feed" in page.url or "checkpoint" not in page.url:
-            save_cookies(ctx, COOKIES_PATH, domain_filter="linkedin.com")
-            logger.info("  [LinkedIn] Login successful ✓")
-            return True
-
-        logger.warning("  [LinkedIn] Login blocked (2FA/checkpoint)")
-        return False
-
-    except Exception as e:
-        logger.warning(f"  [LinkedIn] Login error: {e}")
-        return False
-
-
-def _search(page, title: str, location: str) -> list[dict]:
-=======
         if _is_logged_in(page):
             logger.info("  [LinkedIn] Already logged in ✓")
             save_cookies(ctx, COOKIES_PATH, domain_filter="linkedin.com")
@@ -186,24 +118,11 @@ def _is_logged_in(page) -> bool:
 
 
 def _search(page, title: str, location: str, ctx=None) -> list[dict]:
->>>>>>> 4226f10 (.)
     jobs: list[dict] = []
     try:
         params = urlencode({
             "keywords": title,
             "location": location,
-<<<<<<< HEAD
-            "f_TPR":    "r604800",  # last 7 days
-            "sortBy":   "DD",       # most recent first
-        })
-        url = f"https://www.linkedin.com/jobs/search/?{params}"
-        page.goto(url, timeout=25000, wait_until="domcontentloaded")
-        time.sleep(random.uniform(2, 4))
-
-        if detect_captcha(page):
-            logger.warning(f"  [LinkedIn] CAPTCHA on search for '{title}'")
-            return jobs
-=======
             "f_TPR":    "r86400",   # last 24 hours
             "f_AL":     "true",     # Easy Apply only
             "sortBy":   "DD",
@@ -256,7 +175,6 @@ def _search(page, title: str, location: str, ctx=None) -> list[dict]:
         if "jobs/search" not in page.url and "jobs/collections" not in page.url:
             logger.warning(f"  [LinkedIn] Unexpected URL after search: {page.url} "
                           f"(title: '{page.title()}')")
->>>>>>> 4226f10 (.)
 
         if "login" in page.url or "authwall" in page.url:
             logger.warning("  [LinkedIn] Session expired mid-search")
@@ -268,35 +186,19 @@ def _search(page, title: str, location: str, ctx=None) -> list[dict]:
 
             cards = page.query_selector_all(
                 ".jobs-search__results-list li, "
-<<<<<<< HEAD
-                ".job-card-container, "
-                "[data-occludable-job-id]"
-=======
                 ".job-card-container, [data-occludable-job-id]"
->>>>>>> 4226f10 (.)
             )
             logger.info(f"    Page {page_num}: {len(cards)} cards")
 
             for card in cards:
                 job = _parse_card(card)
                 if job:
-<<<<<<< HEAD
-                    job["source"]         = "linkedin"
-                    job["search_title"]   = title
-                    job["search_location"]= location
-=======
                     job["source"] = "linkedin"
->>>>>>> 4226f10 (.)
                     jobs.append(job)
 
             more = page.query_selector(
                 "button[aria-label*='more results'], "
-<<<<<<< HEAD
-                "button:has-text('Show more results'), "
-                "button:has-text('See more jobs')"
-=======
                 "button:has-text('Show more results')"
->>>>>>> 4226f10 (.)
             )
             if not more or page_num >= MAX_PAGES:
                 break
@@ -304,12 +206,7 @@ def _search(page, title: str, location: str, ctx=None) -> list[dict]:
             time.sleep(random.uniform(2, 4))
 
     except Exception as e:
-<<<<<<< HEAD
-        logger.debug(f"  [LinkedIn] Search error for '{title}': {e}")
-
-=======
         logger.debug(f"  [LinkedIn] Search error '{title}': {e}")
->>>>>>> 4226f10 (.)
     return jobs
 
 
@@ -317,10 +214,6 @@ def _parse_card(card) -> dict | None:
     try:
         title_el = (
             card.query_selector(".job-card-list__title") or
-<<<<<<< HEAD
-            card.query_selector("a.job-card-container__link span[aria-hidden]") or
-=======
->>>>>>> 4226f10 (.)
             card.query_selector("h3.base-search-card__title") or
             card.query_selector("h3")
         )
@@ -344,42 +237,12 @@ def _parse_card(card) -> dict | None:
 
         company_el = (
             card.query_selector(".job-card-container__primary-description") or
-<<<<<<< HEAD
-            card.query_selector(".artdeco-entity-lockup__subtitle") or
-=======
->>>>>>> 4226f10 (.)
             card.query_selector("h4.base-search-card__subtitle") or
             card.query_selector("h4")
         )
         company = company_el.inner_text().strip() if company_el else "Unknown"
 
         location_el = card.query_selector(
-<<<<<<< HEAD
-            ".job-card-container__metadata-item, "
-            "[class*='location'], .job-search-card__location"
-        )
-        location = location_el.inner_text().strip() if location_el else ""
-
-        applicants_el = card.query_selector("[class*='applicant']")
-        applicants    = applicants_el.inner_text().strip() if applicants_el else ""
-
-        # Detect if Easy Apply (for informational purposes, not filtering)
-        easy_apply = False
-        try:
-            card_text = card.inner_text().lower()
-            easy_apply = "easy apply" in card_text or "linkedin apply" in card_text
-        except Exception:
-            pass
-
-        return {
-            "title":      title,
-            "company":    company,
-            "location":   location,
-            "url":        url,
-            "description":"",
-            "salary":     "",
-            "applicants": applicants,
-=======
             ".job-card-container__metadata-item, [class*='location']"
         )
         location = location_el.inner_text().strip() if location_el else ""
@@ -397,7 +260,6 @@ def _parse_card(card) -> dict | None:
         return {
             "title": title, "company": company, "location": location,
             "url": url, "description": "", "salary": "",
->>>>>>> 4226f10 (.)
             "easy_apply": easy_apply,
         }
     except Exception:

@@ -24,24 +24,6 @@ def _t(name: str) -> str:
 
 # ── Pages ─────────────────────────────────────────────────────────
 
-<<<<<<< HEAD
-@router.get("/", response_class=HTMLResponse)
-async def index():
-    db = ProfileDB()
-    ok, _ = db.is_complete()
-    return RedirectResponse("/setup") if not ok else HTMLResponse(_t("dashboard.html"))
-
-
-@router.get("/setup",      response_class=HTMLResponse)
-async def setup_page():    return HTMLResponse(_t("setup.html"))
-
-@router.get("/profile",    response_class=HTMLResponse)
-async def profile_page():  return HTMLResponse(_t("profile.html"))
-
-@router.get("/jobs",       response_class=HTMLResponse)
-async def jobs_page():     return HTMLResponse(_t("jobs.html"))
-
-=======
 # Dashboard (/), Profile, Jobs and Settings are the Next.js app in frontend/ —
 # it owns those URLs (and does the "profile incomplete → /setup" redirect
 # itself, from its Dashboard). This backend still serves its own pages only
@@ -49,7 +31,6 @@ async def jobs_page():     return HTMLResponse(_t("jobs.html"))
 @router.get("/setup",      response_class=HTMLResponse)
 async def setup_page():    return HTMLResponse(_t("setup.html"))
 
->>>>>>> 4226f10 (.)
 @router.get("/apply",      response_class=HTMLResponse)
 async def apply_page():    return HTMLResponse(_t("apply.html"))
 
@@ -100,10 +81,6 @@ async def get_profile_flat():
 
 @router.post("/api/profile")
 async def update_profile(data: dict):
-<<<<<<< HEAD
-    ProfileDB().set_many(data, source="web_ui")
-    return JSONResponse({"status": "ok", "updated": len(data)})
-=======
     """
     Update profile fields.
 
@@ -142,7 +119,6 @@ async def update_profile(data: dict):
 
     db.set_many(accepted, source="web_ui")
     return JSONResponse({"status": "ok", "updated": len(accepted), "rejected": rejected})
->>>>>>> 4226f10 (.)
 
 
 # ── Search preferences ────────────────────────────────────────────
@@ -178,8 +154,6 @@ async def get_status():
     from core.llm import provider_info
     db = ProfileDB()
     ok, missing = db.is_complete()
-<<<<<<< HEAD
-=======
 
     # dry_run is read from SettingsDB (the Settings page toggle), which
     # is what applier/session.Orchestrator._dry_run_enabled() actually
@@ -192,15 +166,10 @@ async def get_status():
     except Exception:
         dry_run = cfg.DRY_RUN
 
->>>>>>> 4226f10 (.)
     return JSONResponse({
         "profile_complete": ok,
         "missing_required": missing,
         "llm":              provider_info(),
         "resume_exists":    cfg.RESUME_PATH.exists(),
-<<<<<<< HEAD
-        "dry_run":          cfg.DRY_RUN,
-=======
         "dry_run":          dry_run,
->>>>>>> 4226f10 (.)
     })

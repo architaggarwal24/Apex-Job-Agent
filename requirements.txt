@@ -22,8 +22,6 @@ APScheduler>=3.10.0
 python-dotenv>=1.0.0
 requests>=2.31.0
 httpx>=0.27.0
-<<<<<<< HEAD
-=======
 
 # Encryption at rest (API keys, saved login sessions)
 cryptography>=42.0.0
@@ -31,4 +29,3 @@ cryptography>=42.0.0
 # Multi-user auth (signed session cookies). Password hashing itself uses
 # stdlib hashlib.scrypt — no extra dependency needed for that part.
 itsdangerous>=2.2.0
->>>>>>> 4226f10 (.)

@@ -66,8 +66,6 @@ STANDARD_FIELDS = [
     ("resume_summary",       "", "meta",          "textarea", "Resume summary/objective"),
 ]
 
-<<<<<<< HEAD
-=======
 # Fields that the per-job "correction" flow (free-text note on the
 # review screen, interpreted by the LLM) is allowed to modify.
 #
@@ -102,7 +100,6 @@ CORRECTABLE_FIELDS = {
     "graduation_year", "graduation_score", "tenth_score", "twelfth_score",
 }
 
->>>>>>> 4226f10 (.)
 
 class ProfileDB:
     def __init__(self, path: Path | None = None):
@@ -186,8 +183,6 @@ class ProfileDB:
             rows = c.execute("SELECT field_key, field_value FROM profile_fields").fetchall()
             return {r["field_key"]: r["field_value"] for r in rows}
 
-<<<<<<< HEAD
-=======
     def answered_values(self) -> dict[str, str]:
         """The facts a person actually provided: every non-empty value EXCEPT
         a seeded default they never touched. A default such as
@@ -203,7 +198,6 @@ class ProfileDB:
         return {k: v for k, v in flat.items()
                 if (v or "").strip() and (k not in defaults or v != defaults[k] or k in touched)}
 
->>>>>>> 4226f10 (.)
     def get_by_category(self) -> dict[str, list[dict]]:
         with self._conn() as c:
             rows = c.execute(
@@ -246,10 +240,7 @@ class ProfileDB:
             "search_positions": jl("search_positions"),
             "search_locations": jl("search_locations"),
             "_flat": f,
-<<<<<<< HEAD
-=======
             "_answered": self.answered_values(),     # what the person really provided (answer bank)
->>>>>>> 4226f10 (.)
         }
 
     def is_complete(self) -> tuple[bool, list[str]]:
@@ -344,23 +335,15 @@ class ProfileDB:
                 result.append(d)
             return result
 
-<<<<<<< HEAD
-    def resolve_missing(self, field_id: int, value: str):
-=======
     def resolve_missing(self, field_id: int, value: str, store: bool = True):
         """Mark a flagged question answered. store=False records that it was
         answered WITHOUT writing the value into the profile (an answer meant
         for one application only)."""
->>>>>>> 4226f10 (.)
         now = datetime.now().isoformat()
         with self._conn() as c:
             r = c.execute("SELECT field_key FROM missing_fields WHERE id=?",
                           (field_id,)).fetchone()
-<<<<<<< HEAD
-            if r:
-=======
             if r and store:
->>>>>>> 4226f10 (.)
                 self.set(r["field_key"], value, source="user_prompt")
             c.execute("UPDATE missing_fields SET status='resolved', resolved_at=? WHERE id=?",
                       (now, field_id))

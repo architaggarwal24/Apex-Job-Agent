@@ -20,13 +20,6 @@ Flow per job:
 
 import logging
 import random
-<<<<<<< HEAD
-import time
-from pathlib import Path
-
-from core.config import cfg
-from core.browser import detect_captcha, is_login_wall, human_delay
-=======
 import re
 import time
 from pathlib import Path
@@ -35,14 +28,12 @@ from applier.answers import summarize
 
 from core.config import cfg
 from core.browser import detect_captcha, is_login_wall, human_delay, wait_for_manual_login
->>>>>>> 4226f10 (.)
 from applier.form_analyzer import extract_fields, analyze, FormAnalysis
 from applier.form_filler import execute, click_next, click_submit
+from applier.site_type import detect_site_type
 
 logger = logging.getLogger(__name__)
 
-<<<<<<< HEAD
-=======
 # Platforms where clicking "Apply" *is* the final submission when no form
 # follows — there's no separate fill-then-submit step like LinkedIn/Indeed
 # Easy Apply. Naukri is the known case: a registered user's profile IS the
@@ -60,7 +51,6 @@ logger = logging.getLogger(__name__)
 # guessing at answers or leaving the session in an unclear state.
 CLICK_IS_TERMINAL = {"naukri"}
 
->>>>>>> 4226f10 (.)
 # Apply button selectors — tried in priority order
 APPLY_BUTTON_SELECTORS = [
     # LinkedIn Easy Apply
@@ -89,10 +79,7 @@ def run_application(
     job: dict,
     profile: dict,
     emit=None,
-<<<<<<< HEAD
-=======
     answers=None,
->>>>>>> 4226f10 (.)
 ) -> dict:
     """
     Run the full application flow for a job.
@@ -114,6 +101,7 @@ def run_application(
     screenshots   = []
     all_missing   = []
     last_analysis = None
+    review_fields = []
 
     _log(emit, f"Opening application: {job.get('url','')}")
 
@@ -123,18 +111,14 @@ def run_application(
         time.sleep(random.uniform(1.5, 3.0))
     except Exception as e:
         return _fail(f"Navigation failed: {e}")
-<<<<<<< HEAD
-=======
     _step(emit, "opened_page", "Opened the job page")
->>>>>>> 4226f10 (.)
+    if emit:                                   # not a timeline step: the Orchestrator keeps it with the session
+        try: emit("site_type", _site_type(page, job))
+        except Exception: pass
 
     if detect_captcha(page):
         return _fail("CAPTCHA detected — skipping")
 
-<<<<<<< HEAD
-    if is_login_wall(page):
-        return _fail("Login wall — page requires authentication")
-=======
     # ── Click-is-terminal platforms (Naukri): never click Apply here ──
     if job.get("source") in CLICK_IS_TERMINAL:
         if not _has_apply_button(page):
@@ -163,7 +147,6 @@ def run_application(
             _log(emit, "Login detected — continuing")
         else:
             return _fail("Login wall — page requires authentication and no login was detected")
->>>>>>> 4226f10 (.)
 
     # ── Step 2: Click apply button if on listing page ─────────────
     if not _page_has_form(page):
@@ -186,10 +169,7 @@ def run_application(
         if not form_text.strip():
             _log(emit, "No form fields found on this page")
             break
-<<<<<<< HEAD
-=======
         _report_page(page, emit, page_num)
->>>>>>> 4226f10 (.)
 
         analysis = analyze(
             page_html=page_text_from_extraction(form_text),
@@ -199,10 +179,7 @@ def run_application(
             company=   job["company"],
             profile=   profile,
         )
-<<<<<<< HEAD
-=======
-        _apply_answers(answers, analysis, emit)
->>>>>>> 4226f10 (.)
+        hits = _apply_answers(answers, analysis, emit)
         last_analysis = analysis
 
         _log(emit, f"Found {len(analysis.fields)} fields — "
@@ -210,10 +187,8 @@ def run_application(
 
         filled, failed = execute(page, analysis,
                                  resume_path=cfg.RESUME_PATH)
-<<<<<<< HEAD
-=======
         _report_filled(emit, filled, failed)
->>>>>>> 4226f10 (.)
+        review_fields.extend(_snapshot(analysis, hits, page_num))
 
         all_missing.extend(analysis.missing)
 
@@ -225,12 +200,9 @@ def run_application(
         # Try to advance to next page
         if not click_next(page, analysis):
             break
-<<<<<<< HEAD
-=======
         errors = _validation_errors(page)
         if errors:
             return _fail(_validation_message(errors))
->>>>>>> 4226f10 (.)
 
         time.sleep(random.uniform(1.0, 2.0))
 
@@ -249,6 +221,7 @@ def run_application(
         "analysis":      last_analysis,
         "error":         "",
         "needs_review":  True,
+        "review":        {"fields": review_fields, "url": _page_url(page)},
     }
 
 
@@ -258,10 +231,7 @@ def run_iteration2(
     profile: dict,
     missing_keys: list[str],
     emit=None,
-<<<<<<< HEAD
-=======
     answers=None,
->>>>>>> 4226f10 (.)
 ) -> dict:
     """
     Re-open the form and fill only previously-missing fields.
@@ -276,8 +246,6 @@ def run_iteration2(
         time.sleep(random.uniform(1.5, 3.0))
     except Exception as e:
         return _fail(f"Navigation failed: {e}")
-<<<<<<< HEAD
-=======
     _step(emit, "opened_page", "Re-opened the job page")
 
     # Defense in depth: run_application() never reports missing fields for
@@ -290,22 +258,19 @@ def run_iteration2(
             "success": True, "screenshots": [], "missing_fields": [], "error": "",
             "needs_review": True,
         }
->>>>>>> 4226f10 (.)
 
     if not _page_has_form(page):
         _click_apply_button(page, emit)
 
     _wait_for_form(page)
 
+    review_fields = []
     for page_num in range(8):
         _log(emit, f"Re-filling page {page_num + 1}")
         form_text = extract_fields(page)
         if not form_text.strip():
             break
-<<<<<<< HEAD
-=======
         _report_page(page, emit, page_num)
->>>>>>> 4226f10 (.)
 
         analysis = analyze(
             page_html=page_text_from_extraction(form_text),
@@ -316,15 +281,11 @@ def run_iteration2(
             profile=   profile,
             only_keys= missing_keys,
         )
-<<<<<<< HEAD
-
-        execute(page, analysis, resume_path=cfg.RESUME_PATH)
-=======
-        _apply_answers(answers, analysis, emit)
+        hits = _apply_answers(answers, analysis, emit)
 
         filled, failed = execute(page, analysis, resume_path=cfg.RESUME_PATH)
         _report_filled(emit, filled, failed)
->>>>>>> 4226f10 (.)
+        review_fields.extend(_snapshot(analysis, hits, page_num))
 
         ss = _screenshot(page, job["job_id"], f"iter2_p{page_num+1}")
         if ss:
@@ -332,12 +293,9 @@ def run_iteration2(
 
         if not click_next(page, analysis):
             break
-<<<<<<< HEAD
-=======
         errors = _validation_errors(page)
         if errors:
             return _fail(_validation_message(errors))
->>>>>>> 4226f10 (.)
         time.sleep(random.uniform(1.0, 2.0))
 
     # Final screenshot
@@ -350,6 +308,7 @@ def run_iteration2(
     return {
         "success": True, "screenshots": screenshots,
         "missing_fields": [], "error": "", "needs_review": True,
+        "review": {"fields": review_fields, "url": _page_url(page)},
     }
 
 
@@ -359,11 +318,6 @@ def run_submit(
     profile: dict,
     corrections: list[str] | None = None,
     emit=None,
-<<<<<<< HEAD
-) -> dict:
-    """
-    Final submit: re-open form, fill everything, click Submit.
-=======
     dry_run: bool = False,
     answers=None,
 ) -> dict:
@@ -377,7 +331,6 @@ def run_submit(
                  *found*, not whether it was clicked. This lets a user
                  verify the full flow end-to-end without sending a real
                  application.
->>>>>>> 4226f10 (.)
     """
     screenshots = []
     _log(emit, "Re-opening form for final submission")
@@ -387,8 +340,6 @@ def run_submit(
         time.sleep(random.uniform(1.5, 3.0))
     except Exception as e:
         return _fail(f"Navigation failed: {e}")
-<<<<<<< HEAD
-=======
     _step(emit, "opened_page", "Re-opened the job page")
 
     # ── Click-is-terminal platforms (Naukri): the button click IS the
@@ -396,7 +347,6 @@ def run_submit(
     # form-fill loop below, which assumes a form appears after clicking.
     if job.get("source") in CLICK_IS_TERMINAL:
         return _run_submit_click_only(page, job, emit, dry_run)
->>>>>>> 4226f10 (.)
 
     if not _page_has_form(page):
         _click_apply_button(page, emit)
@@ -408,10 +358,7 @@ def run_submit(
         form_text = extract_fields(page)
         if not form_text.strip():
             break
-<<<<<<< HEAD
-=======
         _report_page(page, emit, page_num)
->>>>>>> 4226f10 (.)
 
         analysis = analyze(
             page_html=page_text_from_extraction(form_text),
@@ -421,12 +368,6 @@ def run_submit(
             company=   job["company"],
             profile=   profile,
         )
-<<<<<<< HEAD
-
-        execute(page, analysis, resume_path=cfg.RESUME_PATH)
-        _log(emit, f"Filled form page {page_num + 1}")
-
-=======
         _apply_answers(answers, analysis, emit)
 
         filled, failed = execute(page, analysis, resume_path=cfg.RESUME_PATH)
@@ -448,7 +389,6 @@ def run_submit(
                 "dry_run":     True,
             }
 
->>>>>>> 4226f10 (.)
         if click_submit(page, analysis):
             time.sleep(3)
             ss = _screenshot(page, job["job_id"], "submitted")
@@ -459,23 +399,15 @@ def run_submit(
 
         if not click_next(page, analysis):
             break
-<<<<<<< HEAD
-=======
         errors = _validation_errors(page)
         if errors:
             return _fail(_validation_message(errors))
->>>>>>> 4226f10 (.)
         time.sleep(random.uniform(1.0, 2.0))
 
     return {
         "success":     submitted,
         "screenshots": screenshots,
         "error":       "" if submitted else "Could not find submit button",
-<<<<<<< HEAD
-    }
-
-
-=======
         "dry_run":     False,
     }
 
@@ -581,7 +513,6 @@ def _has_submit_button(page, analysis: FormAnalysis) -> bool:
     return False
 
 
->>>>>>> 4226f10 (.)
 # ── Helpers ───────────────────────────────────────────────────────
 
 def _click_apply_button(page, emit=None):
@@ -597,10 +528,7 @@ def _click_apply_button(page, emit=None):
                 btn = page.query_selector(sel)
                 if btn and btn.is_visible():
                     _log(emit, f"Found apply button: {sel}")
-<<<<<<< HEAD
-=======
                     _step(emit, "found_apply_button", "Found the Apply button")
->>>>>>> 4226f10 (.)
                     # Watch for new tab
                     try:
                         with page.context.expect_page(timeout=4000) as new_pg_info:
@@ -658,16 +586,10 @@ def _is_review_page(page) -> bool:
 
 def _screenshot(page, job_id: str, label: str) -> str:
     try:
-<<<<<<< HEAD
-        from agent.screenshotter import take
-        return take(page, job_id, label)
-    except Exception:
-=======
         from applier.screenshotter import take
         return take(page, job_id, label)
     except Exception as e:
         logger.debug(f"  [Screenshot] screenshotter.take failed: {e}")
->>>>>>> 4226f10 (.)
         try:
             import time as _t
             ts   = _t.strftime("%H%M%S")
@@ -683,8 +605,6 @@ def page_text_from_extraction(form_text: str) -> str:
     return form_text
 
 
-<<<<<<< HEAD
-=======
 _PROGRESS_RX = re.compile(r"\b(?:step|page)\s+(\d{1,2})\s*(?:of|/)\s*(\d{1,2})\b", re.I)
 
 
@@ -708,17 +628,44 @@ def _report_page(page, emit, page_num: int):
           page=n, total=total)
 
 
+def _page_url(page) -> str:
+    try:
+        return str(page.url or "")
+    except Exception:
+        return ""
+
+
+def _snapshot(analysis, hits: list[dict], page_num: int) -> list[dict]:
+    """What the analysed page now holds, field by field, for the review packet
+    (applier/review.py turns these into packet fields): the value that was
+    just filled, the form's own `required` flag, and - if a saved answer or
+    one of this application's own answers filled it - that hit, so the packet
+    can say where the value came from. File uploads are not fields to review
+    (the chosen resume is recorded separately)."""
+    by_label = {h["label"]: h for h in hits}
+    out = []
+    for f in analysis.fields:
+        if (f.field_type or "").lower() in ("file", "upload") or not (f.label or "").strip():
+            continue
+        value = f.db_value or getattr(f, "placeholder", "") or ""
+        out.append({"label": f.label, "field_key": f.field_key, "type": f.field_type or "text",
+                    "value": str(value), "options": list(f.options or []),
+                    "required": bool(getattr(f, "is_required", False)),
+                    "page": page_num + 1, "hit": by_label.get(f.label)})
+    return out
+
+
 def _apply_answers(answers, analysis, emit):
     """Consult the answer bank (applier/answers.py) on a freshly analysed page,
     before anything is filled or anyone is asked, and say what it did. A fault
     in the bank is logged and the page is filled as if it were not there."""
     if answers is None:
-        return
+        return []
     try:
         hits = answers.apply(analysis)
     except Exception:
         logger.exception("  [Universal] answer bank failed; filling without it")
-        return
+        return []
     n = summarize(hits)
     used = n["filled"] + n["once"]
     if used:
@@ -728,6 +675,7 @@ def _apply_answers(answers, analysis, emit):
         k = n["suggested"]
         _step(emit, "saved_answers_to_confirm", f"{k} saved answer{'' if k == 1 else 's'} to confirm",
               count=k)
+    return hits
 
 
 def _report_filled(emit, filled, failed):
@@ -773,11 +721,20 @@ def _validation_errors(page) -> list[str]:
         return []
 
 
+def _site_type(page, job: dict) -> str:
+    """Which kind of application flow this is (applier/site_type.py), from the
+    page's URL (after any redirect) and html. Never raises."""
+    try:
+        html = page.content()
+    except Exception:
+        html = ""
+    return detect_site_type(_page_url(page) or job.get("url", ""), html)
+
+
 def _validation_message(errors: list[str]) -> str:
     return "Validation error — the site rejected the answers: " + "; ".join(errors[:3])
 
 
->>>>>>> 4226f10 (.)
 def _fail(reason: str) -> dict:
     return {
         "success": False, "screenshots": [], "missing_fields": [],
@@ -785,8 +742,6 @@ def _fail(reason: str) -> dict:
     }
 
 
-<<<<<<< HEAD
-=======
 def _step(emit, code: str, message: str, **data):
     """Progress for the job's timeline: emit("step", {...}); the Orchestrator
     records it in application_events. Never raises."""
@@ -796,7 +751,6 @@ def _step(emit, code: str, message: str, **data):
         except Exception: pass
 
 
->>>>>>> 4226f10 (.)
 def _log(emit, msg: str, warn: bool = False):
     level = logger.warning if warn else logger.info
     level(f"  [Universal] {msg}")

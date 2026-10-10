@@ -1,15 +1,9 @@
 """
 scraper/indeed.py — Indeed job scraper.
 
-<<<<<<< HEAD
-Scrapes ALL Indeed jobs matching user's positions + locations.
-No iafilter — includes both Easy Apply and company site redirects.
-Apply flow handled by applier/universal.py.
-=======
 Same login strategy as LinkedIn — no credentials in .env.
 If not logged in, opens the login page and waits for manual login.
 Cookies saved for all future runs.
->>>>>>> 4226f10 (.)
 """
 
 import json
@@ -20,17 +14,9 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from core.config  import cfg
-<<<<<<< HEAD
-from core.browser import (detect_captcha, scroll_to_bottom,
-                           load_cookies, save_cookies, human_delay)
-
-logger = logging.getLogger(__name__)
-
-=======
 from core.browser import detect_captcha, scroll_to_bottom, load_cookies, save_cookies, human_delay
 
 logger       = logging.getLogger(__name__)
->>>>>>> 4226f10 (.)
 MAX_PAGES    = 5
 BASE_URL     = "https://in.indeed.com"
 COOKIES_PATH = cfg.COOKIES_DIR / "indeed.json"
@@ -38,10 +24,6 @@ COOKIES_PATH = cfg.COOKIES_DIR / "indeed.json"
 
 def scrape(playwright, profile: dict,
            job_titles: list[str], locations: list[str]) -> list[dict]:
-<<<<<<< HEAD
-    """Scrape Indeed for all matching jobs. Returns list of job dicts."""
-=======
->>>>>>> 4226f10 (.)
     from core.browser import launch_browser, get_page
 
     results: list[dict] = []
@@ -69,62 +51,19 @@ def scrape(playwright, profile: dict,
         try: ctx.close()
         except Exception: pass
 
-<<<<<<< HEAD
-    logger.info(f"  [Indeed] Total: {len(results)} jobs found")
-=======
     logger.info(f"  [Indeed] Total: {len(results)} jobs")
->>>>>>> 4226f10 (.)
     return results
 
 
 def _ensure_logged_in(page, ctx) -> bool:
-<<<<<<< HEAD
-=======
     """
     Check Indeed login. If not logged in, open login page
     and wait up to 90 seconds for the user to log in manually.
     """
->>>>>>> 4226f10 (.)
     try:
         page.goto(BASE_URL, timeout=20000, wait_until="domcontentloaded")
         time.sleep(2)
 
-<<<<<<< HEAD
-        if page.query_selector("#AccountMenu, [data-testid='AccountMenu'], .gnav-LoggedInDropdown"):
-            logger.info("  [Indeed] Already logged in ✓")
-            return True
-
-        if not cfg.INDEED_EMAIL or not cfg.INDEED_PASSWORD:
-            logger.warning("  [Indeed] No credentials — log in to Indeed in Opera first")
-            return False
-
-        page.goto(f"{BASE_URL}/account/login", timeout=20000)
-        time.sleep(2)
-
-        email_input = page.query_selector("input[type='email'], input[name='__email']")
-        if email_input:
-            email_input.fill(cfg.INDEED_EMAIL)
-            time.sleep(0.5)
-            page.keyboard.press("Enter")
-            time.sleep(2)
-
-        pw_input = page.query_selector("input[type='password']")
-        if pw_input:
-            pw_input.fill(cfg.INDEED_PASSWORD)
-            time.sleep(0.5)
-            page.keyboard.press("Enter")
-            time.sleep(3)
-
-        save_cookies(ctx, COOKIES_PATH, domain_filter="indeed.com")
-        logger.info("  [Indeed] Login attempted ✓")
-        return True
-
-    except Exception as e:
-        logger.warning(f"  [Indeed] Login error: {e}")
-        return False
-
-
-=======
         if _is_logged_in(page):
             logger.info("  [Indeed] Already logged in ✓")
             save_cookies(ctx, COOKIES_PATH, domain_filter="indeed.com")
@@ -165,20 +104,10 @@ def _is_logged_in(page) -> bool:
     return False
 
 
->>>>>>> 4226f10 (.)
 def _search(page, title: str, location: str) -> list[dict]:
     jobs: list[dict] = []
     try:
         params = urlencode({
-<<<<<<< HEAD
-            "q":       title,
-            "l":       location,
-            "fromage": "7",     # last 7 days
-            "sort":    "date",  # newest first
-        })
-        url = f"{BASE_URL}/jobs?{params}"
-        page.goto(url, timeout=25000, wait_until="domcontentloaded")
-=======
             "q":        title,
             "l":        location,
             "fromage":  "1",     # last 24 hours
@@ -186,7 +115,6 @@ def _search(page, title: str, location: str) -> list[dict]:
             "sort":     "date",
         })
         page.goto(f"{BASE_URL}/jobs?{params}", timeout=25000, wait_until="domcontentloaded")
->>>>>>> 4226f10 (.)
         time.sleep(random.uniform(2, 4))
 
         if detect_captcha(page):
@@ -198,35 +126,18 @@ def _search(page, title: str, location: str) -> list[dict]:
             time.sleep(1.5)
 
             cards = page.query_selector_all(
-<<<<<<< HEAD
-                ".job_seen_beacon, .resultContent, "
-                "[class*='jobCard'], li.css-5lfssm"
-=======
                 ".job_seen_beacon, .resultContent, [class*='jobCard']"
->>>>>>> 4226f10 (.)
             )
             logger.info(f"    Page {page_num}: {len(cards)} cards")
 
             for card in cards:
                 job = _parse_card(card)
                 if job:
-<<<<<<< HEAD
-                    job["source"]          = "indeed"
-                    job["search_title"]    = title
-                    job["search_location"] = location
-                    jobs.append(job)
-
-            next_btn = page.query_selector(
-                "a[aria-label='Next Page'], "
-                "a[data-testid='pagination-page-next'], "
-                "a.np[aria-label='Next']"
-=======
                     job["source"] = "indeed"
                     jobs.append(job)
 
             next_btn = page.query_selector(
                 "a[aria-label='Next Page'], a[data-testid='pagination-page-next']"
->>>>>>> 4226f10 (.)
             )
             if not next_btn or page_num >= MAX_PAGES:
                 break
@@ -234,12 +145,7 @@ def _search(page, title: str, location: str) -> list[dict]:
             time.sleep(random.uniform(2, 4))
 
     except Exception as e:
-<<<<<<< HEAD
-        logger.debug(f"  [Indeed] Search error for '{title}': {e}")
-
-=======
         logger.debug(f"  [Indeed] Search error '{title}': {e}")
->>>>>>> 4226f10 (.)
     return jobs
 
 
@@ -263,57 +169,22 @@ def _parse_card(card) -> dict | None:
         if not url:
             return None
 
-<<<<<<< HEAD
-        company_el = (
-            card.query_selector("[data-testid='company-name'], .companyName") or
-            card.query_selector("span[class*='company'], [class*='EmployerName']")
-=======
         company_el = card.query_selector(
             "[data-testid='company-name'], .companyName, [class*='EmployerName']"
->>>>>>> 4226f10 (.)
         )
         company = company_el.inner_text().strip() if company_el else "Unknown"
 
         location_el = card.query_selector(
-<<<<<<< HEAD
-            "[data-testid='text-location'], .companyLocation, [class*='location']"
-        )
-        location = location_el.inner_text().strip() if location_el else ""
-
-        salary_el = card.query_selector("[class*='salary'], [data-testid*='salary']")
-=======
             "[data-testid='text-location'], .companyLocation"
         )
         location = location_el.inner_text().strip() if location_el else ""
 
         salary_el = card.query_selector("[class*='salary']")
->>>>>>> 4226f10 (.)
         salary    = salary_el.inner_text().strip() if salary_el else ""
 
         desc_el = card.query_selector(".job-snippet, [class*='snippet']")
         desc    = desc_el.inner_text().strip() if desc_el else ""
 
-<<<<<<< HEAD
-        # Detect apply type (informational only, not used for filtering)
-        easy_apply = False
-        company_site = False
-        try:
-            card_text = card.inner_text().lower()
-            easy_apply   = "easily apply" in card_text or "indeed apply" in card_text
-            company_site = "apply on company site" in card_text
-        except Exception:
-            pass
-
-        return {
-            "title":        title,
-            "company":      company,
-            "location":     location,
-            "url":          url,
-            "description":  desc,
-            "salary":       salary,
-            "easy_apply":   easy_apply,
-            "company_site": company_site,
-=======
         easy_apply   = False
         company_site = False
         try:
@@ -331,7 +202,6 @@ def _parse_card(card) -> dict | None:
             "title": title, "company": company, "location": location,
             "url": url, "description": desc, "salary": salary,
             "easy_apply": easy_apply, "company_site": company_site,
->>>>>>> 4226f10 (.)
         }
     except Exception:
         return None

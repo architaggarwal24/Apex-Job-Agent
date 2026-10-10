@@ -3,10 +3,6 @@ core/llm.py — Unified LLM client.
 
 Priority: Settings DB (set via UI) → .env fallback → error.
 Switching providers: go to Settings page in the UI, no code changes needed.
-<<<<<<< HEAD
-"""
-
-=======
 
 ASYNC ROUTES: chat()/chat_json() are BLOCKING (synchronous network I/O).
 FastAPI route handlers (`async def ...`) must never call them directly —
@@ -17,21 +13,17 @@ they run the blocking call in a thread pool with a timeout.
 """
 
 import asyncio
->>>>>>> 4226f10 (.)
 import json
 import logging
 import re
 
 logger = logging.getLogger(__name__)
 
-<<<<<<< HEAD
-=======
 # Default timeout for achat()/achat_json() — generous enough for slow
 # providers (NVIDIA NIM has been observed taking 60-90s/call) while
 # still bounding how long an async route can be blocked-on-result.
 ASYNC_LLM_TIMEOUT = 90.0
 
->>>>>>> 4226f10 (.)
 _openai_client    = None
 _anthropic_client = None
 _gemini_model     = None
@@ -157,8 +149,6 @@ def _call_gemini(messages, system, max_tokens, temperature, s) -> str:
         "\n\n".join(parts),
         generation_config={"max_output_tokens": max_tokens, "temperature": temperature})
     return r.text or ""
-<<<<<<< HEAD
-=======
 
 
 # ── Connection testing & model discovery (Settings screen) ──────────────────
@@ -349,4 +339,3 @@ async def run_blocking(fn, *args, timeout: float = ASYNC_LLM_TIMEOUT, **kwargs):
         loop.run_in_executor(None, lambda: fn(*args, **kwargs)),
         timeout=timeout,
     )
->>>>>>> 4226f10 (.)

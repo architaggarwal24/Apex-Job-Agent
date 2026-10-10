@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<!-- tests/fixtures/greenhouse_application.html
+     A HAND-WRITTEN stand-in for a Greenhouse job-board application page (job-boards.greenhouse.io style):
+     labels tied to controls by for= / aria-labelledby, a hidden resume file input, a React-select-style
+     combobox, native selects, a yes/no radio group and a voluntary self-identification block.
+     It is NOT a capture of a live page - the adapter was never run against a real Greenhouse site. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Job Application for Senior Backend Engineer at Acme Robotics</title>
+  <style>
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .input-wrapper, .select, .file-upload { margin: 12px 0; }
+    .required { color: #c00; }
+  </style>
+</head>
+<body>
+  <div id="main">
+    <h1>Senior Backend Engineer</h1>
+    <div class="job__location">Remote - India</div>
+    <div class="job__description"><p>Build the services that move our robots.</p></div>
+
+    <div class="application--container">
+      <h2>Apply for this job</h2>
+      <p>* indicates a required field</p>
+      <form id="application_form" class="application--form" method="post"
+            action="https://boards.greenhouse.io/acme/jobs/4012345" enctype="multipart/form-data" novalidate>
+        <div class="application--questions">
+
+          <div class="input-wrapper">
+            <label for="first_name" class="label">First Name<span class="required">*</span></label>
+            <input id="first_name" name="job_application[first_name]" type="text" class="input input__single-line" aria-required="true" required>
+          </div>
+          <div class="input-wrapper">
+            <label for="last_name" class="label">Last Name<span class="required">*</span></label>
+            <input id="last_name" name="job_application[last_name]" type="text" class="input input__single-line" aria-required="true" required>
+          </div>
+          <div class="input-wrapper">
+            <label for="email" class="label">Email<span class="required">*</span></label>
+            <input id="email" name="job_application[email]" type="text" class="input input__single-line" aria-required="true" required>
+          </div>
+          <div class="input-wrapper">
+            <label for="phone" class="label">Phone</label>
+            <input id="phone" name="job_application[phone]" type="tel" class="input input__single-line">
+          </div>
+
+          <div class="file-upload" data-testid="resume-upload">
+            <div class="label" id="upload-label-resume">Resume/CV<span class="required">*</span></div>
+            <div role="group" aria-labelledby="upload-label-resume">
+              <div class="upload-buttons"><button type="button" data-source="attach">Attach</button></div>
+              <input id="resume" name="job_application[resume]" type="file" class="visually-hidden" accept=".pdf,.doc,.docx,.txt,.rtf" aria-required="true">
+            </div>
+          </div>
+          <div class="file-upload" data-testid="cover_letter-upload">
+            <div class="label" id="upload-label-cover_letter">Cover Letter</div>
+            <div role="group" aria-labelledby="upload-label-cover_letter">
+              <div class="upload-buttons"><button type="button" data-source="attach">Attach</button></div>
+              <input id="cover_letter" name="job_application[cover_letter]" type="file" class="visually-hidden" accept=".pdf,.doc,.docx,.txt,.rtf">
+            </div>
+          </div>
+
+          <div class="input-wrapper">
+            <label for="question_30001" class="label">LinkedIn Profile</label>
+            <input id="question_30001" name="job_application[answers_attributes][0][text_value]" type="text" class="input input__single-line">
+          </div>
+          <div class="input-wrapper">
+            <label for="question_30002" class="label">Website</label>
+            <input id="question_30002" name="job_application[answers_attributes][1][text_value]" type="text" class="input input__single-line">
+          </div>
+          <div class="input-wrapper">
+            <label for="question_30003" class="label">GitHub URL</label>
+            <input id="question_30003" name="job_application[answers_attributes][2][text_value]" type="text" class="input input__single-line">
+          </div>
+          <div class="input-wrapper">
+            <label for="question_30004" class="label">Why do you want to work at Acme Robotics?<span class="required">*</span></label>
+            <textarea id="question_30004" name="job_application[answers_attributes][3][text_value]" class="input input__multi-line" aria-required="true" required></textarea>
+          </div>
+          <div class="input-wrapper">
+            <label for="question_30007" class="label">Current employer</label>
+            <input id="question_30007" name="job_application[answers_attributes][6][text_value]" type="text" class="input input__single-line">
+          </div>
+
+          <!-- a React-select style combobox: the menu only exists while it is open -->
+          <div class="select__container">
+            <label id="question_30005-label" for="question_30005" class="label">Are you legally authorized to work in India?<span class="required">*</span></label>
+            <div class="select" data-select-options='["Yes","No"]'>
+              <div class="select__control">
+                <input id="question_30005" class="select__input" type="text" role="combobox" aria-haspopup="listbox"
+                       aria-expanded="false" aria-labelledby="question_30005-label" aria-required="true" autocomplete="off">
+                <div class="select__single-value"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- a native select -->
+          <div class="input-wrapper">
+            <label for="question_30006" class="label">Will you now or in the future require sponsorship for employment visa status?<span class="required">*</span></label>
+            <select id="question_30006" name="job_application[answers_attributes][5][boolean_value]" aria-required="true" required>
+              <option value="">Select...</option>
+              <option value="1">Yes</option>
+              <option value="0">No</option>
+            </select>
+          </div>
+
+          <!-- a yes/no radio group -->
+          <fieldset class="input-wrapper">
+            <legend class="label">Are you at least 18 years of age?<span class="required">*</span></legend>
+            <label><input type="radio" name="job_application[answers_attributes][7][boolean_value]" value="1" required> Yes</label>
+            <label><input type="radio" name="job_application[answers_attributes][7][boolean_value]" value="0"> No</label>
+          </fieldset>
+
+          <div id="eeoc_fields">
+            <h3>Voluntary Self-Identification</h3>
+            <div class="input-wrapper">
+              <label for="gender" class="label">Gender</label>
+              <select id="gender" name="job_application[gender]"><option value="">Select...</option><option value="1">Male</option><option value="2">Female</option><option value="3">Decline To Self Identify</option></select>
+            </div>
+            <div class="input-wrapper">
+              <label for="veteran_status" class="label">Veteran Status</label>
+              <select id="veteran_status" name="job_application[veteran_status]"><option value="">Select...</option><option value="1">I am not a protected veteran</option></select>
+            </div>
+          </div>
+        </div>
+
+        <input type="hidden" name="fingerprint" value="abc123">
+        <button type="submit" id="submit_app" class="btn btn--pill">Submit application</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    window.__submitted = false;
+    document.getElementById('application_form').addEventListener('submit', function (e) {
+      e.preventDefault(); window.__submitted = true;
+    });
+    // minimal React-select behaviour: open on focus/typing, a menu of role=option, choose on click.
+    document.querySelectorAll('[data-select-options]').forEach(function (sel) {
+      var opts = JSON.parse(sel.getAttribute('data-select-options'));
+      var input = sel.querySelector('input[role=combobox]'), shown = sel.querySelector('.select__single-value'), menu = null;
+      function close() { if (menu) { menu.remove(); menu = null; } input.setAttribute('aria-expanded', 'false'); }
+      function open() {
+        close();
+        var filter = input.value.toLowerCase();
+        menu = document.createElement('div'); menu.className = 'select__menu'; menu.setAttribute('role', 'listbox');
+        opts.filter(function (o) { return !filter || o.toLowerCase().indexOf(filter) > -1; }).forEach(function (o) {
+          var d = document.createElement('div'); d.className = 'select__option'; d.setAttribute('role', 'option'); d.textContent = o;
+          d.addEventListener('click', function () { shown.textContent = o; sel.setAttribute('data-value', o); input.value = ''; close(); });
+          menu.appendChild(d);
+        });
+        sel.appendChild(menu); input.setAttribute('aria-expanded', 'true');
+      }
+      input.addEventListener('focus', open); input.addEventListener('click', open); input.addEventListener('input', open);
+    });
+  </script>
+</body>
+</html>
