@@ -39,8 +39,12 @@ export default function Workspace() {
   const [sort, setSort] = useState({ key: 'ai_score', dir: -1 })
   const reloadTimer = useRef(null)
 
-  const load = useCallback(() => api('/api/applications?limit=2000').then(rows => { setApps(rows); setErr('') })
-    .catch(e => setErr(e.message)), [])
+  const [dueIds, setDueIds] = useState(null)        // job ids with a follow-up due; only loaded for ?followups=due
+  const wantsDue = f.followups === 'due'
+  const load = useCallback(() => {
+    if (wantsDue) api('/api/follow-ups/due').then(due => setDueIds(new Set(due.map(x => x.job_id)))).catch(() => setDueIds(new Set()))
+    return api('/api/applications?limit=2000').then(rows => { setApps(rows); setErr('') }).catch(e => setErr(e.message))
+  }, [wantsDue])
   useEffect(() => { load() }, [load])
 
   // Another page linking in (or Back/Forward) changes the query: follow it.
@@ -73,7 +77,7 @@ export default function Workspace() {
   useEffect(() => { if (!msg) return undefined; const t = setTimeout(() => setMsg(null), 6000); return () => clearTimeout(t) }, [msg])
 
   const all = apps || []
-  const rows = useMemo(() => applyFilters(all, f), [all, f])
+  const rows = useMemo(() => applyFilters(all, f, { now: new Date(), dueIds: dueIds || new Set() }), [all, f, dueIds])
   const titles = useMemo(() => [...new Set(all.map(a => a.title).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [all])
   const sources = useMemo(() => [...new Set(all.map(a => (a.source || '').toLowerCase()).filter(Boolean))].sort(), [all])
   // A title that is no longer present (Clear all, a purge) stops filtering.

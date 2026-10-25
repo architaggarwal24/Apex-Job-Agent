@@ -114,11 +114,14 @@ def iso(ts: float) -> str:
     return datetime.fromtimestamp(ts).isoformat() if ts else ""
 
 
-def _token_public(r) -> dict:
-    """A token as the API shows it: never its hash, never the token."""
+def _token_public(r, now: float | None = None) -> dict:
+    """A token as the API shows it: never its hash, never the token. `online`: a live token
+    whose runner was seen in the last SEEN_WINDOW_SECONDS (the same test "auto" uses)."""
+    now = now if now is not None else time.time()
     return {"id": r["id"], "label": r["label"], "created_at": iso(r["created_at"]),
             "last_seen_at": iso(r["last_seen_at"]), "revoked_at": iso(r["revoked_at"]),
-            "active": not r["revoked_at"]}
+            "active": not r["revoked_at"],
+            "online": not r["revoked_at"] and bool(r["last_seen_at"]) and r["last_seen_at"] >= now - SEEN_WINDOW_SECONDS}
 
 
 def _task(r) -> dict:
@@ -204,10 +207,10 @@ class RunnerTokenStore(_Db):
             row = c.execute("SELECT * FROM runner_tokens WHERE id=?", (cur.lastrowid,)).fetchone()
         return {**_token_public(row), "token": token}
 
-    def list(self) -> list[dict]:
+    def list(self, now: float | None = None) -> list[dict]:
         with self._conn() as c:
             rows = c.execute("SELECT * FROM runner_tokens WHERE user_id=? ORDER BY id", (self.user_id,)).fetchall()
-        return [_token_public(r) for r in rows]
+        return [_token_public(r, now) for r in rows]
 
     def revoke(self, token_id: int, now: float | None = None) -> bool:
         """Revoke one of this user's tokens (idempotent). False if it is not theirs."""

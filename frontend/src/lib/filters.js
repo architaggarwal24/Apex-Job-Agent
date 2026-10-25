@@ -7,6 +7,8 @@
 //   source=  title=   exact (source in any case)        search= (or q=)  substring of title/company/location
 //   min= max=         score range, inclusive (an unscored job is outside any range)
 //   view=board|list|review                    job=<job_id> is read by the page itself (opens its panel)
+//   next_step_within=48   the card's next step (next_step_at) falls within the next N hours (1-720)
+//   followups=due         the card has a follow-up due now (GET /api/follow-ups/due)
 // Plain JS with no React, so tests can run it under Node.
 import { STAGE_KEYS } from '@/lib/stages'
 
@@ -20,7 +22,32 @@ export function filtersFrom(params) {
     source: params.get('source') || '', stages: [...stages],
     min: params.get('min') || '', max: params.get('max') || '',
     view: ['board', 'list', 'review'].includes(view) ? view : 'board',
+    within: hoursParam(params.get('next_step_within')),
+    followups: params.get('followups') === 'due' ? 'due' : '',
   }
+}
+
+function hoursParam(v) {
+  const n = Number(v)
+  return Number.isInteger(n) && n >= 1 && n <= 720 ? String(n) : ''
+}
+
+// A next_step_at as a local Date; a date alone ("2026-11-03") is that day's start.
+export function parseWhen(s) {
+  if (!s) return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(s)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+// Is the next step within the next `hours`? A date alone counts for that whole day - the same
+// rule the notifier's "interview within 24 h" uses (core/notifier.py).
+export function nextStepWithin(at, hours, now = new Date()) {
+  const when = parseWhen(at)
+  if (!when || !hours) return false
+  const end = now.getTime() + Number(hours) * 3600e3
+  if (/^\d{4}-\d{2}-\d{2}$/.test(at)) return when.getTime() <= end && when.getTime() + 864e5 > now.getTime()
+  return when.getTime() >= now.getTime() && when.getTime() <= end
 }
 
 export function queryFrom(f, openId) {
@@ -32,6 +59,8 @@ export function queryFrom(f, openId) {
   if (f.min !== '') p.set('min', f.min)
   if (f.max !== '') p.set('max', f.max)
   if (f.view !== 'board') p.set('view', f.view)
+  if (f.within) p.set('next_step_within', f.within)
+  if (f.followups) p.set('followups', f.followups)
   if (openId) p.set('job', openId)
   const s = p.toString()
   return s ? `?${s}` : ''
@@ -39,8 +68,10 @@ export function queryFrom(f, openId) {
 
 export const byScore = (a, b) => (b.ai_score ?? -1) - (a.ai_score ?? -1) || String(a.stage_entered_at).localeCompare(String(b.stage_entered_at))
 
-export function applyFilters(apps, f) {
+// `ctx`: {now, dueIds} - the clock, and the job ids with a follow-up due (needed for followups=due).
+export function applyFilters(apps, f, ctx = {}) {
   const q = f.q.trim().toLowerCase()
+  const now = ctx.now || new Date(), due = ctx.dueIds || new Set()
   const min = f.min === '' ? null : Number(f.min), max = f.max === '' ? null : Number(f.max)
   return apps.filter(a =>
     (!f.stages.length || f.stages.includes(a.stage)) &&
@@ -48,6 +79,8 @@ export function applyFilters(apps, f) {
     (!f.source || (a.source || '').toLowerCase() === f.source.toLowerCase()) &&
     (min == null || (a.ai_score != null && a.ai_score >= min)) &&
     (max == null || (a.ai_score != null && a.ai_score <= max)) &&
-    (!q || `${a.title} ${a.company} ${a.location || ''}`.toLowerCase().includes(q)))
+    (!q || `${a.title} ${a.company} ${a.location || ''}`.toLowerCase().includes(q)) &&
+    (!f.within || nextStepWithin(a.next_step_at, f.within, now)) &&
+    (!f.followups || due.has(a.job_id)))
 }
 

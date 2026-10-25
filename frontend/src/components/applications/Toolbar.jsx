@@ -31,6 +31,12 @@ export default function Toolbar({ f, setF, titles, sources, onPurge, onClearAll,
           <input className="in" type="number" min="0" max="100" placeholder="≤" value={f.max} onChange={e => score('max', e.target.value)} aria-label="Maximum score" />
         </span>
       </div>
+      {(f.within || f.followups) && <div className="bar">
+        {f.within && <span className="chip filter-chip">Next step within {f.within} h
+          <button className="link-btn" onClick={() => set('within', '')} aria-label="Clear the next-step filter">✕</button></span>}
+        {f.followups && <span className="chip filter-chip">Follow-up due
+          <button className="link-btn" onClick={() => set('followups', '')} aria-label="Clear the follow-up filter">✕</button></span>}
+      </div>}
       <div className="bar">
         <div className="pills" role="radiogroup" aria-label="Stage">
           {PILLS.map(([v, l]) => <button key={l} role="radio" aria-checked={stageKey === v} className={`pill ${stageKey === v ? 'on' : ''}`}

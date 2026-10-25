@@ -6,36 +6,35 @@ import json
 import logging
 import shutil
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
+from fastapi.responses import JSONResponse, RedirectResponse
 
+from core.auth     import get_current_user_id
 from core.config   import cfg
 from db.profile_db import ProfileDB
+from server.static_shell import LEGACY_REDIRECTS
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-ROOT   = cfg.ROOT_DIR
+
+# ── Old page URLs ─────────────────────────────────────────────────
+
+# Today (/), Applications, Insights, Profile and Settings are the Next.js app in
+# frontend/ — it owns those URLs. The old server-rendered Setup, Apply and
+# Pipeline pages are gone; their URLs (and the old Next /jobs page) redirect to
+# the pages that replaced them, keeping any query string. The redirects are
+# public (server/static_shell.py) so a logged-out bookmark still lands on the
+# right page after signing in.
+def _redirect(to: str):
+    async def go(request: Request):
+        q = request.url.query
+        return RedirectResponse(to + ("?" + q if q else ""), status_code=307)
+    return go
 
 
-def _t(name: str) -> str:
-    p = ROOT / "templates" / name
-    return p.read_text(encoding="utf-8") if p.exists() else f"<h1>Missing: {name}</h1>"
-
-
-# ── Pages ─────────────────────────────────────────────────────────
-
-# Dashboard (/), Profile, Jobs and Settings are the Next.js app in frontend/ —
-# it owns those URLs (and does the "profile incomplete → /setup" redirect
-# itself, from its Dashboard). This backend still serves its own pages only
-# for first-run Setup, Apply and Pipeline, which aren't ported yet.
-@router.get("/setup",      response_class=HTMLResponse)
-async def setup_page():    return HTMLResponse(_t("setup.html"))
-
-@router.get("/apply",      response_class=HTMLResponse)
-async def apply_page():    return HTMLResponse(_t("apply.html"))
-
-@router.get("/tracking",   response_class=HTMLResponse)
-async def tracking_page(): return HTMLResponse(_t("tracking.html"))
+for _old, _new in LEGACY_REDIRECTS.items():
+    for _path in (_old, _old + "/"):
+        router.add_api_route(_path, _redirect(_new), methods=["GET"], include_in_schema=False)
 
 
 # ── Resume upload ─────────────────────────────────────────────────
@@ -145,6 +144,28 @@ async def save_prefs(data: dict):
                json.dumps([l.strip() for l in data["locations"] if l.strip()]),
                source="setup")
     return JSONResponse({"status": "ok"})
+
+
+# ── Get-started checklist (the Today page; replaces the /setup redirect) ──
+
+@router.get("/api/setup/checklist")
+async def setup_checklist(uid: int = Depends(get_current_user_id)):
+    """What is left to set up (core/checklist.py). Per user where the data is per user (resume
+    variants, jobs); the profile, the provider test and the job-site logins belong to the one
+    machine-wide setup the owner runs, as everywhere else in the app."""
+    from core import checklist
+    from db.jobs_db import JobsDB
+    from db.resumes_db import ResumeStore
+    from db.settings_db import SettingsDB
+    from server.routes.settings import login_states
+    db = ProfileDB()
+    _ok, missing = db.is_complete()
+    logins = login_states(cfg.COOKIES_DIR)
+    return JSONResponse(checklist.build(
+        settings=SettingsDB.get(), profile_flat=db.get_all(), profile_missing=missing,
+        resume_file=cfg.RESUME_PATH.exists(), resume_variants=len(ResumeStore(uid).list()),
+        logged_in={k: v.get("status") == "logged_in" for k, v in logins.items()},
+        job_count=len(JobsDB(user_id=uid).job_ids())))
 
 
 # ── Status ────────────────────────────────────────────────────────

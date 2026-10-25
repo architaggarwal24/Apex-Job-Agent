@@ -1,12 +1,13 @@
 """
-server/routes/settings.py — Settings API + page route.
+server/routes/settings.py — Settings API.
 """
 
 import asyncio
 import json
 import logging
+import time
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from applier import apply_mode, executors
@@ -19,12 +20,6 @@ from db.settings_db import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-ROOT   = __import__("pathlib").Path(__file__).resolve().parent.parent.parent
-
-
-def _t(name: str) -> str:
-    p = ROOT / "templates" / name
-    return p.read_text(encoding="utf-8") if p.exists() else f"<h1>Missing: {name}</h1>"
 
 
 # GET /settings is the Next.js app's page now — see server/static_shell.py.
@@ -70,7 +65,8 @@ async def get_setting_raw(key: str):
 # validate them (an unchecked base URL or a hand-written provider list would
 # bypass the SSRF check).
 _MANAGED_KEYS = ("custom_providers", "queue_paused")      # the latter: /api/queue/pause|resume
-_MANAGED_PREFIXES = ("extra_models_", "notify_")          # the latter: /api/notifications/settings
+_MANAGED_PREFIXES = ("extra_models_", "notify_",          # notify_: /api/notifications/settings
+                     "setup_")                            # setup_: recorded by the server (core/checklist.py)
 
 
 @router.post("/api/settings")
@@ -270,6 +266,8 @@ async def test_llm(body: ProbeIn | None = None, _owner: int = Depends(require_ow
     from core import llm as LLM
     cfg = _candidate_config(body or ProbeIn())
     result = await _run_blocking(LLM.test_connection, cfg)
+    from core import checklist
+    checklist.mark_llm_tested(SettingsDB.get(), cfg["provider"], cfg["model"])     # the Today page's checklist
     return JSONResponse({"status": "ok", "provider": cfg["provider"],
                          "label": cfg.get("label", cfg["provider"]), "model": cfg["model"], **result})
 
@@ -287,56 +285,55 @@ async def fetch_models(body: ProbeIn, _owner: int = Depends(require_owner)):
 
 # ── Login status ──────────────────────────────────────────────────────────────
 
+SITES = {"linkedin": "linkedin.com", "indeed": "indeed.com", "naukri": "naukri.com"}
+
+
+def check_cookies(path, domain: str) -> dict:
+    if not path.exists():
+        return {"status": "not_logged_in", "message": "No saved session"}
+    try:
+        # Cookie files are encrypted at rest (core/browser.py's
+        # save_cookies) — decrypt_bytes() passes pre-existing
+        # plaintext files through unchanged, so this reads both old
+        # and new files correctly. Reading with plain json.loads()
+        # here (as this used to) would fail on every encrypted file
+        # and silently report every real session as "unknown".
+        from core.crypto import decrypt_bytes
+        cookies = json.loads(decrypt_bytes(path.read_bytes()).decode())
+        domain_cookies = [c for c in cookies if domain in c.get("domain","")]
+        if not domain_cookies:
+            return {"status": "not_logged_in", "message": "No session cookies"}
+        # Check expiry on session cookies
+        now = time.time()
+        valid = [c for c in domain_cookies
+                 if c.get("expires", now + 1) > now or c.get("expires", -1) == -1]
+        if not valid:
+            return {"status": "expired", "message": "Session expired — will re-login on next run"}
+        mod_time = path.stat().st_mtime
+        hours_ago = (now - mod_time) / 3600
+        return {
+            "status":  "logged_in",
+            "message": f"Session saved {hours_ago:.0f}h ago",
+            "count":   len(valid),
+        }
+    except Exception as e:
+        return {"status": "unknown", "message": str(e)}
+
+
+def login_states(cookies_dir) -> dict:
+    """{platform: check_cookies(...)} for every job site. Also read by the Today page's
+    get-started checklist (server/routes/onboarding.py)."""
+    return {name: check_cookies(cookies_dir / f"{name}.json", domain) for name, domain in SITES.items()}
+
+
 @router.get("/api/settings/login-status")
 async def login_status():
     """
     Check cookie freshness for LinkedIn and Indeed.
     Does NOT launch a browser — just checks if saved cookies exist and are recent.
     """
-    from pathlib import Path
-    import json, time
     from core.config import cfg
-
-    def check_cookies(path: Path, domain: str) -> dict:
-        if not path.exists():
-            return {"status": "not_logged_in", "message": "No saved session"}
-        try:
-            # Cookie files are encrypted at rest (core/browser.py's
-            # save_cookies) — decrypt_bytes() passes pre-existing
-            # plaintext files through unchanged, so this reads both old
-            # and new files correctly. Reading with plain json.loads()
-            # here (as this used to) would fail on every encrypted file
-            # and silently report every real session as "unknown".
-            from core.crypto import decrypt_bytes
-            cookies = json.loads(decrypt_bytes(path.read_bytes()).decode())
-            domain_cookies = [c for c in cookies if domain in c.get("domain","")]
-            if not domain_cookies:
-                return {"status": "not_logged_in", "message": "No session cookies"}
-            # Check expiry on session cookies
-            now = time.time()
-            valid = [c for c in domain_cookies
-                     if c.get("expires", now + 1) > now or c.get("expires", -1) == -1]
-            if not valid:
-                return {"status": "expired", "message": "Session expired — will re-login on next run"}
-            mod_time = path.stat().st_mtime
-            hours_ago = (now - mod_time) / 3600
-            return {
-                "status":  "logged_in",
-                "message": f"Session saved {hours_ago:.0f}h ago",
-                "count":   len(valid),
-            }
-        except Exception as e:
-            return {"status": "unknown", "message": str(e)}
-
-    li_path     = cfg.COOKIES_DIR / "linkedin.json"
-    indeed_path = cfg.COOKIES_DIR / "indeed.json"
-    naukri_path = cfg.COOKIES_DIR / "naukri.json"
-
-    return JSONResponse({
-        "linkedin": check_cookies(li_path,     "linkedin.com"),
-        "indeed":   check_cookies(indeed_path, "indeed.com"),
-        "naukri":   check_cookies(naukri_path, "naukri.com"),
-    })
+    return JSONResponse(login_states(cfg.COOKIES_DIR))
 
 
 @router.post("/api/settings/clear-cookies/{platform}")

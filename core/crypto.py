@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 _KEY_PATH = cfg.DATA_DIR / ".master.key"
 _ENC_PREFIX = "enc:"
 _fernet = None
+_reported_unreadable = False     # decrypt() explains a wrong key once, not on every read
 
 
 def _load_or_create_key() -> bytes:
@@ -77,6 +78,39 @@ def _get_fernet() -> Fernet:
     return _fernet
 
 
+def key_hint() -> str:
+    """Why stored values may not decrypt, in words - never the key itself. The usual cause:
+    APP_ENCRYPTION_KEY was set after secrets had been saved with the auto-generated
+    data/.master.key (the env key wins and the file is then ignored)."""
+    env_key = os.getenv("APP_ENCRYPTION_KEY", "").strip()
+    if env_key:
+        try:
+            file_key = _KEY_PATH.read_bytes().strip().decode() if _KEY_PATH.exists() else ""
+        except OSError:
+            file_key = ""
+        if file_key and file_key != env_key:
+            return (f"APP_ENCRYPTION_KEY is set and differs from {_KEY_PATH}, which is then ignored. "
+                    "Values saved before you set it were encrypted with that file's key: set "
+                    "APP_ENCRYPTION_KEY to the file's contents to read them again, or re-enter them "
+                    "(LLM keys in Settings > Providers, notification secrets in Settings > Automation; "
+                    "job-site logins and resume variants are encrypted the same way).")
+        return ("APP_ENCRYPTION_KEY is set, but these values were encrypted with a different key. "
+                "Restore the key they were saved with, or re-enter them in Settings.")
+    return (f"The key in {_KEY_PATH} is not the one these values were encrypted with (was the file "
+            "replaced or deleted?). Restore it from a backup, or re-enter them in Settings.")
+
+
+def can_decrypt(value: str) -> bool:
+    """True when value is plaintext or decrypts with the current key. No logging."""
+    if not value or not value.startswith(_ENC_PREFIX):
+        return True
+    try:
+        _get_fernet().decrypt(value[len(_ENC_PREFIX):].encode())
+        return True
+    except Exception:
+        return False
+
+
 def encrypt(plaintext: str) -> str:
     """Encrypt a string for storage. Empty strings pass through unchanged
     (no point encrypting "no API key set yet")."""
@@ -98,10 +132,15 @@ def decrypt(value: str) -> str:
     try:
         return _get_fernet().decrypt(value[len(_ENC_PREFIX):].encode()).decode()
     except InvalidToken:
-        logger.error("[Crypto] Could not decrypt a stored value — the "
-                     "encryption key is missing/wrong, or the value is "
-                     "corrupted. Returning empty rather than raising, so a "
-                     "bad key doesn't take down the whole settings page.")
+        # Returning empty rather than raising, so a bad key doesn't take down the whole
+        # settings page. Explained once: every settings read would otherwise log it again.
+        global _reported_unreadable
+        if not _reported_unreadable:
+            _reported_unreadable = True
+            logger.error("[Crypto] A stored secret can't be decrypted with the current key, so it "
+                         "reads as empty (logged once). " + key_hint())
+        else:
+            logger.debug("[Crypto] Could not decrypt a stored value (see the error above)")
         return ""
     except Exception as e:
         logger.error(f"[Crypto] Unexpected decrypt error: {e}")

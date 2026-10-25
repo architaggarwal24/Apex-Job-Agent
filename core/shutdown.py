@@ -21,7 +21,11 @@ restarted. Keeping them separate fixes that while preserving the
 "stop everything on Ctrl+C" behaviour.
 """
 
+import contextlib
 import logging
+import os
+import signal
+import subprocess
 import threading
 from typing import Protocol
 
@@ -125,3 +129,57 @@ class _CombinedCancelEvent:
 
 # Singleton passed to pipeline.run()/score_jobs_batch() as cancel_event.
 combined_cancel_event = _CombinedCancelEvent()
+
+
+# ── Ctrl+C ownership and child processes (main.py) ─────────────────────────
+
+def make_server(config):
+    """
+    A uvicorn.Server that leaves Ctrl+C/SIGTERM to the process's own handler (main.py).
+
+    uvicorn >= 0.29 installs its own handler for as long as it runs (capture_signals),
+    replacing main.py's. On Ctrl+C it then closes the port and waits for every open
+    connection to finish - and the app's live-updates stream (/api/events/stream) never
+    finishes while a tab is open - so Ctrl+C looked like it did nothing, the Next dev server
+    was never stopped and kept logging ECONNREFUSED. Older uvicorn used
+    install_signal_handlers(); both are disabled here.
+    """
+    import uvicorn
+
+    class _Server(uvicorn.Server):
+        @contextlib.contextmanager
+        def capture_signals(self):
+            yield
+
+        def install_signal_handlers(self):
+            pass
+
+    return _Server(config)
+
+
+def kill_process_tree(proc, timeout: float = 5.0) -> None:
+    """
+    Stop a child started in its own process group (start_new_session on POSIX,
+    CREATE_NEW_PROCESS_GROUP on Windows) together with everything it started.
+
+    On Windows `npm` is npm.cmd: terminate() would end only that cmd.exe and leave node
+    (the Next dev server, still holding port 3000) running, so the tree is ended with
+    taskkill /T instead.
+    """
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                           capture_output=True, timeout=timeout)
+        else:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        proc.wait(timeout=timeout)
+    except Exception:
+        try:
+            if os.name != "nt":
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            proc.kill()
+            proc.wait(timeout=timeout)
+        except Exception:
+            pass

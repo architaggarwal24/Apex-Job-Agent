@@ -1,8 +1,8 @@
 # tests/test_applications_http.py
 """
 tests/test_applications_http.py — the lifecycle API over HTTP: auth, per-user
-isolation, status codes, and that the old /api/jobs, /api/apply/* and
-/api/tracking/* endpoints still answer in their old shapes.
+isolation, status codes, and that the old /api/jobs/{id}, /api/apply/* and
+/api/tracking/* endpoints the UI still uses answer in their old shapes.
 
 Run from the project root:   python3 -m unittest discover -s tests -v
 
@@ -160,44 +160,28 @@ class ApplicationsHttpTests(unittest.TestCase):
 
     # ── the old endpoints, now wrappers ───────────────────────────
 
-    def test_tracking_endpoints_keep_their_shape_scope_to_the_caller_and_409_illegal_moves(self):
+    def test_tracking_endpoints_keep_their_shape_and_scope_to_the_caller(self):
         a = self.add(1, 1)
         b = self.add(2, 1)
-        r = self.client.post(f"/api/tracking/stage/{a}", json={"stage": "applied", "note": "sent"})
-        self.assertEqual((r.status_code, r.json()), (200, {"status": "ok", "stage": "applied"}))
-        self.assertEqual(self.client.post(f"/api/tracking/stage/{a}",
-                                          json={"stage": "applied"}).status_code, 200)   # no-op
-        self.client.post(f"/api/tracking/stage/{a}", json={"stage": "offer"})
-        self.assertEqual(self.client.post(f"/api/tracking/stage/{a}",
-                                          json={"stage": "recruiter_screen"}).status_code, 409)
-        self.assertEqual(self.client.post(f"/api/tracking/stage/{a}",
-                                          json={"stage": "nonsense"}).status_code, 400)
-        self.assertEqual(self.bob.post(f"/api/tracking/stage/{a}",
-                                       json={"stage": "applied"}).status_code, 404)
-
-        board = self.client.get("/api/tracking/pipeline").json()
-        self.assertEqual(set(board), {"applied", "recruiter_screen", "technical_round",
-                                      "hiring_manager", "offer", "rejected", "withdrawn"})
-        self.assertEqual([x["job_id"] for x in board["offer"]], [a])
-        self.assertEqual(set(board["offer"][0]), {"job_id", "stage", "title", "company",
-                                                  "url", "ai_score", "changed_at"})
-        self.assertTrue(all(v == [] for v in self.bob.get("/api/tracking/pipeline").json().values()))
+        self.client.post(f"/api/applications/{a}/transition", json={"to": "submitted"})
+        r = self.client.post(f"/api/tracking/note/{a}", json={"note": "sent"})
+        self.assertEqual((r.status_code, r.json()), (200, {"status": "ok"}))
+        self.assertEqual(self.client.post(f"/api/tracking/note/{a}", json={"note": " "}).status_code, 400)
+        self.assertEqual(self.bob.post(f"/api/tracking/note/{a}", json={"note": "x"}).status_code, 404)
         self.assertEqual(self.client.get("/api/tracking/analytics").status_code, 200)
 
         job = self.client.get(f"/api/jobs/{a}").json()
-        self.assertEqual(job["status"], "in_progress")
-        self.assertEqual([(s["stage"], s["note"]) for s in job["stages"]],
-                         [("applied", "sent"), ("offer", "")])
+        self.assertEqual(job["status"], "applied")
         self.assertEqual(self.bob.get(f"/api/jobs/{b}").json()["stage"], "found")
+        self.assertEqual(self.bob.get(f"/api/jobs/{a}").status_code, 404)
 
-    def test_jobs_and_stats_keep_old_fields_and_add_the_new_ones(self):
+    def test_job_details_and_stats_keep_old_fields_and_add_the_new_ones(self):
         a = self.add(1, 1)
         self.client.post(f"/api/applications/{a}/transition", json={"to": "submitted"})
-        row = self.client.get("/api/jobs").json()[0]
+        row = self.client.get(f"/api/jobs/{a}").json()
         for k in ("job_id", "status", "error_message", "applied_at", "ai_score", "title"):
             self.assertIn(k, row)
         self.assertEqual((row["status"], row["stage"]), ("applied", "submitted"))
-        self.assertEqual([r["job_id"] for r in self.client.get("/api/jobs?status=applied").json()], [a])
         stats = self.client.get("/api/stats").json()
         self.assertEqual(stats["applied"], 1)
         self.assertEqual(stats["pipeline"], {"applied": 1})

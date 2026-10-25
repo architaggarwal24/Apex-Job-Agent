@@ -14,6 +14,10 @@ measured record behind it (applier/autonomy.py has the rules' semantics).
     DELETE /api/automation/rules/{id}    delete a rule        (owner only)
     PUT    /api/automation/autonomy      {"autonomy_enabled": bool}: the kill switch,
                                          OFF until you turn it on  (owner only)
+    GET    /api/automation/rules/{id}/preview
+                                         the rule's ledger stats, and which of your queued
+                                         jobs it would auto-submit and why not (read-only;
+                                         applier/autonomy.preview_rule)
 
 Everything is per user: each handler builds AutonomyStore(uid) from the session,
 so someone else's rule or ledger is simply not found. Reading is open to any
@@ -78,6 +82,20 @@ async def delete_rule(rule_id: int, uid: int = Depends(require_owner)):
     if not AutonomyStore(uid).delete_rule(rule_id):
         raise HTTPException(404, "Rule not found")
     return JSONResponse({"status": "deleted"})
+
+
+@router.get("/api/automation/rules/{rule_id}/preview")
+async def preview_rule(rule_id: int, uid: int = Depends(get_current_user_id)):
+    from applier import autonomy
+    from db.jobs_db import JobsDB
+    from db.settings_db import SettingsDB
+    store = AutonomyStore(uid)
+    rule = _rule_or_404(store, rule_id)
+    jobs = JobsDB(user_id=uid)
+    queued = sorted(jobs.list_applications(stage="queued", limit=2000),
+                    key=lambda j: (j["ai_score"] is None, -(j["ai_score"] or 0), j["stage_entered_at"]))
+    return JSONResponse(autonomy.preview_rule(rule, queued, store=store, settings=SettingsDB.get(),
+                                              applied_today=jobs.count_applied_today()))
 
 
 @router.put("/api/automation/autonomy")

@@ -27,18 +27,18 @@ python main.py                   # http://localhost:8000
 The browser only ever talks to one origin, so the session cookie just works and
 there is no CORS (which this project deliberately doesn't enable).
 
-Apply, Pipeline and first-run Setup are still served by the backend's own pages;
-the sidebar links to them (`src/lib/backend.js`).
+Every page is the Next app. The old `/jobs`, `/apply`, `/tracking` and `/setup`
+URLs redirect to Applications or Today (`server/static_shell.py`).
 
 ## Layout
 
 ```
-src/app/            routes — page.jsx (Dashboard), jobs/, profile/, settings/
+src/app/            routes — page.jsx (Today), applications/, insights/, profile/, settings/
 src/components/     layout/AppShell (auth, sidebar, theme), auth/Login
 src/lib/            api.js (fetch wrapper), theme.js, backend.js
 next.config.mjs     dev proxy vs. static export, chosen by build phase
 ```
 
-Optional env: `NEXT_PUBLIC_BACKEND_ORIGIN` (dev link target for legacy pages,
+Optional env: `NEXT_PUBLIC_BACKEND_ORIGIN` (dev target for the apply WebSocket,
 default `http://localhost:8000`), `APEX_BACKEND_ORIGIN` (dev proxy target,
 default `http://127.0.0.1:8000`).

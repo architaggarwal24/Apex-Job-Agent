@@ -4,23 +4,21 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { api } from '@/lib/api'
-import { backendUrl } from '@/lib/backend'
 import { PrefsContext } from '@/lib/theme'
 import { DEFAULT_PREFS, THEME_IDS, applyPrefs, loadPrefs, savePrefs } from '@/lib/prefs'
 import Login from '@/components/auth/Login'
 
-// Order matters — this is the sidebar order. `legacy` items are still served
-// by the FastAPI backend (see lib/backend.js), so they're plain anchors
-// rather than client-side <Link>s. Applications replaces the old Jobs page and
-// the backend's Apply and Pipeline pages.
+// Order matters — this is the sidebar order. The old /jobs, /apply, /tracking
+// and /setup URLs redirect to these pages (server/static_shell.py LEGACY_REDIRECTS).
 const NAV = [
-  { href: '/', label: 'Dashboard' },
-  { href: '/profile', label: 'Profile' },
+  { href: '/', label: 'Today' },
   { href: '/applications', label: 'Applications' },
+  { href: '/insights', label: 'Insights' },
+  { href: '/profile', label: 'Profile' },
   { href: '/settings', label: 'Settings' },
 ]
 
-// With `trailingSlash` in the production export, pathname is "/jobs/".
+// With `trailingSlash` in the production export, pathname is "/applications/".
 const normalize = p => (p.length > 1 ? p.replace(/\/+$/, '') : p)
 
 export default function AppShell({ children }) {
@@ -57,9 +55,7 @@ export default function AppShell({ children }) {
       <div className="shell">
         <aside className="side">
           <div className="logo">⚡ Apex</div>
-          {NAV.map(n => n.legacy
-            ? <a key={n.href} className="nav" href={backendUrl(n.href)}>{n.label}</a>
-            : <Link key={n.href} className={`nav ${pathname === n.href ? 'active' : ''}`} href={n.href}>{n.label}</Link>)}
+          {NAV.map(n => <Link key={n.href} className={`nav ${pathname === n.href ? 'active' : ''}`} href={n.href}>{n.label}</Link>)}
           <div className="spacer" />
           <div className="sep">{auth.email}</div>
           <button className="nav" style={{ background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }} onClick={logout}>Sign out</button>

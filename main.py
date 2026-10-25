@@ -41,7 +41,7 @@ from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 
 from core.config   import cfg
-from core.shutdown import shutdown_event, wait_for_threads
+from core.shutdown import kill_process_tree, make_server, shutdown_event, wait_for_threads
 
 cfg.ensure_dirs()
 
@@ -95,15 +95,11 @@ def _start_next_dev():
     output is piped into our own logger with a [next] prefix rather
     than left to print to a second window.
 
-    On POSIX this runs in its own process group (start_new_session)
-    so _stop_next_dev() can kill the whole tree — npm itself often
-    execs into the next process, but not on every npm/OS combination,
-    and killing only the immediate PID can otherwise leave an orphaned
-    node process running after Ctrl+C. On Windows, CREATE_NEW_PROCESS_GROUP
-    plus terminate() is the closest equivalent; if a stray `node` process
-    is ever left behind there after a force-exit, Task Manager is the
-    fallback — Windows process-tree cleanup from Python is inherently
-    less reliable than POSIX process groups.
+    It runs in its own process group (start_new_session on POSIX,
+    CREATE_NEW_PROCESS_GROUP on Windows, which also keeps Ctrl+C from
+    reaching it directly) so _stop_next_dev() can end the whole tree —
+    npm → node — with core.shutdown.kill_process_tree(); killing only the
+    immediate PID would leave node running and holding port 3000.
     """
     global _next_process
     frontend_dir = ROOT / "frontend"
@@ -146,17 +142,19 @@ def _start_next_dev():
 
 def _stop_next_dev():
     global _next_process
-    if _next_process is None or _next_process.poll() is not None:
-        return
-    try:
-        if os.name == "nt":
-            _next_process.terminate()
-        else:
-            os.killpg(os.getpgid(_next_process.pid), signal.SIGTERM)
-        _next_process.wait(timeout=5)
-    except Exception:
-        _next_process.kill()
-    _next_process = None
+    proc, _next_process = _next_process, None
+    kill_process_tree(proc, timeout=4.0)
+
+
+def _check_encryption_key():
+    """One clear startup warning, instead of an error on every settings read, when saved
+    secrets can't be decrypted - usually APP_ENCRYPTION_KEY set after they were saved."""
+    from core.crypto import key_hint
+    from db.settings_db import SettingsDB
+    bad = SettingsDB.get().unreadable_secrets()
+    if bad:
+        logger.warning(f"[Crypto] {len(bad)} saved secret(s) can't be decrypted and read as empty: "
+                       f"{', '.join(bad)}. {key_hint()}")
 
 
 def start_server(dev_ui: bool = False):
@@ -173,6 +171,7 @@ def start_server(dev_ui: bool = False):
                     "once, or use `python main.py --dev-ui` for the hot-reload dev server.")
 
     app = create_app()
+    _check_encryption_key()
     from server.routes.queue import get_worker
     get_worker().start()          # recovers interrupted jobs, then works the queue
     from intelligence import prep
@@ -187,9 +186,9 @@ def start_server(dev_ui: bool = False):
 
     config = uvicorn.Config(app, host=cfg.APP_HOST, port=cfg.APP_PORT,
                             log_level="warning")
-    server = uvicorn.Server(config)
-    # Let our custom SIGINT handler take precedence over uvicorn's default
-    server.install_signal_handlers = lambda: None
+    # main.py's _signal_handler keeps Ctrl+C: uvicorn's own handler would wait forever for
+    # the live-updates stream to close (core/shutdown.make_server).
+    server = make_server(config)
     server.run()
 
 
@@ -197,6 +196,8 @@ def run_pipeline(quick: bool = False):
     from tracking.pipeline import run
     logger.info(f"Running pipeline (quick={quick})")
     stats = run(quick_mode=quick, cancel_event=shutdown_event)
+    from server.routes.jobs import _mark_search_run
+    _mark_search_run()                       # the Today page's get-started checklist
     logger.info(f"Pipeline complete: {stats}")
     return stats
 

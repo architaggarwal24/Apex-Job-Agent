@@ -1,5 +1,5 @@
 """
-server/routes/jobs.py — Job listing, stats, pipeline API.
+server/routes/jobs.py — Job details, stats, pipeline API.
 """
 
 import logging
@@ -11,14 +11,6 @@ from db.jobs_db import JobsDB
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-@router.get("/api/jobs")
-async def get_jobs(status: str = "", limit: int = 500,
-                   uid: int = Depends(get_current_user_id)):
-    db = JobsDB(user_id=uid)
-    jobs = db.get_all(limit=limit, status=status)
-    return JSONResponse(jobs)
 
 
 @router.get("/api/jobs/{job_id}")
@@ -71,6 +63,8 @@ async def run_pipeline(data: dict = None, background_tasks: BackgroundTasks = No
                 cancel_event=combined_cancel_event)
         except Exception as e:
             logger.error(f"Pipeline error: {e}")
+            return
+        _mark_search_run()
 
     if background_tasks:
         t = threading.Thread(target=_run, daemon=True, name="pipeline-run")
@@ -91,65 +85,6 @@ async def cancel_pipeline(uid: int = Depends(require_owner)):
     return JSONResponse({"status": "cancel_requested"})
 
 
-@router.post("/api/jobs/{job_id}/score")
-async def rescore_job(job_id: str, uid: int = Depends(get_current_user_id)):
-    """
-    Manually trigger AI scoring for a specific job.
-
-    score_job() makes a blocking LLM call internally. Run it via
-    run_blocking() so this doesn't freeze the event loop for other
-    requests/WebSocket connections — observed LLM latency on some
-    providers (NVIDIA NIM) is 60-90s per call.
-    """
-    db  = JobsDB(user_id=uid)
-    job = db.get_by_id(job_id)
-    if not job:
-        from fastapi import HTTPException
-        raise HTTPException(404, "Job not found")
-
-    from db.profile_db import ProfileDB
-    from intelligence.scorer import score_job
-    from core.llm import run_blocking
-    import asyncio
-
-    profile = ProfileDB().summary()
-    try:
-        result = await run_blocking(score_job, job, profile)
-    except asyncio.TimeoutError:
-        from fastapi import HTTPException
-        raise HTTPException(504, "Scoring timed out — the configured LLM provider "
-                                  "took too long to respond")
-    db.update_score(job_id, result["score"], result["reason"])
-    return JSONResponse(result)
-
-
-@router.post("/api/jobs/{job_id}/brief")
-async def regenerate_brief(job_id: str, uid: int = Depends(get_current_user_id)):
-    """
-    Manually trigger brief + resume tailoring for a job.
-    Makes blocking LLM calls internally — see rescore_job() above.
-    """
-    db  = JobsDB(user_id=uid)
-    job = db.get_by_id(job_id)
-    if not job:
-        from fastapi import HTTPException
-        raise HTTPException(404, "Job not found")
-
-    from db.profile_db import ProfileDB
-    from intelligence.briefer import generate_and_save
-    from core.llm import run_blocking
-    import asyncio
-
-    profile = ProfileDB().summary()
-    try:
-        result = await run_blocking(generate_and_save, job, profile, db)
-    except asyncio.TimeoutError:
-        from fastapi import HTTPException
-        raise HTTPException(504, "Brief generation timed out — the configured "
-                                  "LLM provider took too long to respond")
-    return JSONResponse(result)
-
-
 @router.delete("/api/jobs/duplicates")
 async def purge_duplicates(uid: int = Depends(get_current_user_id)):
     deleted = JobsDB(user_id=uid).purge_duplicates()
@@ -167,6 +102,16 @@ async def clear_all_jobs(include_applied: bool = False,
     """
     deleted = JobsDB(user_id=uid).clear_all(include_applied=include_applied)
     return JSONResponse({"deleted": deleted, "include_applied": include_applied})
+
+
+def _mark_search_run():
+    """A search finished: the Today page's checklist ticks "first search" (core/checklist.py)."""
+    try:
+        from core import checklist
+        from db.settings_db import SettingsDB
+        checklist.mark_search_run(SettingsDB.get())
+    except Exception as e:
+        logger.warning(f"Could not record the search run: {type(e).__name__}")
 
 
 async def _start_thread(t, register_fn):

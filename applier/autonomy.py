@@ -237,6 +237,49 @@ def consider_auto_approval(job: dict, site_type: str, *, path=None, settings=Non
         return None
 
 
+def preview_rule(rule: dict, queued: list[dict], *, store, settings, applied_today: int,
+                 now: datetime | None = None) -> dict:
+    """What `rule` would do to the jobs waiting in the queue - read-only, nothing is
+    approved or recorded. `queued` is this user's queued jobs in queue order (highest
+    score first) with their url and ai_score; `store` this user's AutonomyStore.
+
+    Each job gets would_submit and the reasons it would not, from the same checks
+    consider_auto_approval makes: the kill switch, assist mode (never auto-submitted),
+    rule_failures() with this rule's site type, score, ledger and daily max (counting the
+    jobs ahead of it in this preview), and the daily apply limit (not in dry run). A queued
+    job has no review packet yet, so "every answer known" can only be judged when it reaches
+    review: a rule that requires it marks the job "would_submit" with that condition noted.
+    Plus the rule's own ledger stats (its site type's; none for "*") and auto-approvals today."""
+    from applier import apply_mode
+    from applier.queue_worker import daily_limit, is_dry_run
+    enabled = store.is_enabled()
+    approved = store.auto_approved_today(rule["id"], now)
+    dry_run = is_dry_run(settings)
+    cap = daily_limit(settings)
+    lenient = {**rule, "require_all_answers_known": False}         # judged at review, not now
+    jobs, taken = [], 0
+    for job in queued:
+        site_type = site_type_for(job)
+        why = []
+        if not enabled:
+            why.append("autonomy is switched off")
+        if apply_mode.mode_for(settings, site_type) == "assist":
+            why.append(f"{site_type} is in assist mode: you apply by hand")
+        why += rule_failures(lenient, site_type=site_type, ai_score=job.get("ai_score"), packet=None,
+                             stats=store.site_stats(site_type), approved_today=approved + taken)
+        if not dry_run and cap > 0 and applied_today + taken >= cap:
+            why.append(f"the daily apply limit is reached ({applied_today + taken}/{cap})")
+        ok = not why
+        taken += ok
+        jobs.append({"job_id": job["job_id"], "title": job.get("title", ""), "company": job.get("company", ""),
+                     "ai_score": job.get("ai_score"), "site_type": site_type, "would_submit": ok, "reasons": why,
+                     "condition": "only if every answer is from your answer bank or profile (checked at review)"
+                                  if ok and rule["require_all_answers_known"] else ""})
+    return {"rule_id": rule["id"], "site_type": rule["site_type"], "autonomy_enabled": enabled, "dry_run": dry_run,
+            "stats": None if rule["site_type"] == ANY_SITE else store.site_stats(rule["site_type"]),
+            "auto_approved_today": approved, "would_submit": taken, "jobs": jobs}
+
+
 def _settings():
     from db.settings_db import SettingsDB
     return SettingsDB.get()

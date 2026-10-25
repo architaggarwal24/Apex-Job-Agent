@@ -35,11 +35,10 @@ def _install_ui(app: FastAPI, ui_dir: Path | None) -> Path | None:
     Serve the Next.js app.
 
       * Built (frontend/out exists): mounted at "/" — production, one process.
-        Called AFTER the API routers are registered so /api/*, /apply, etc.
-        match first and this catch-all only receives what's left.
+        Called AFTER the API routers are registered so /api/* and the old
+        page redirects match first and this catch-all only receives what's left.
       * Not built, but `python main.py --dev-ui` started the Next dev server
-        (it sets APEX_DEV_UI_ORIGIN): redirect the app's pages to that server,
-        so links from the legacy pages (Apply/Pipeline) still land somewhere.
+        (it sets APEX_DEV_UI_ORIGIN): redirect the app's pages to that server.
       * Neither: nothing is mounted and those paths 404.
 
     Returns the directory being served (None if not built) for the auth gate.

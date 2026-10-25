@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from server.static_shell import is_public_path, normalize, resolve_static_file
+from server.static_shell import LEGACY_REDIRECTS, SHELL_ROUTES, is_public_path, normalize, resolve_static_file
 
 
 class StaticShellTests(unittest.TestCase):
@@ -20,10 +20,10 @@ class StaticShellTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         base = Path(self.tmp.name)
         self.out = base / "out"
-        (self.out / "jobs").mkdir(parents=True)
+        (self.out / "applications").mkdir(parents=True)
         (self.out / "_next" / "static").mkdir(parents=True)
         (self.out / "index.html").write_text("home")
-        (self.out / "jobs" / "index.html").write_text("jobs")
+        (self.out / "applications" / "index.html").write_text("applications")
         (self.out / "flat.html").write_text("flat")
         (self.out / "_next" / "static" / "app.js").write_text("js")
         (self.out / "404.html").write_text("nf")
@@ -39,17 +39,26 @@ class StaticShellTests(unittest.TestCase):
         return is_public_path(p, self.out)
 
     def test_normalize(self):
-        for raw, want in [("/", "/"), ("//", "/"), ("/jobs", "/jobs"), ("/jobs/", "/jobs"), ("", "/")]:
+        for raw, want in [("/", "/"), ("//", "/"), ("/applications", "/applications"), ("/applications/", "/applications"), ("", "/")]:
             self.assertEqual(normalize(raw), want, raw)
 
     def test_exported_files_are_public(self):
-        for p in ["/", "/jobs", "/jobs/", "/flat", "/_next/static/app.js", "/404.html", "/index.html"]:
+        for p in ["/", "/applications", "/applications/", "/flat", "/_next/static/app.js", "/404.html", "/index.html"]:
             self.assertTrue(self.public(p), p)
 
     def test_things_the_export_does_not_contain_stay_protected(self):
-        for p in ["/apply", "/tracking", "/setup", "/screenshots/x.png", "/docs", "/openapi.json",
+        for p in ["/screenshots/x.png", "/docs", "/openapi.json", "/apply/x", "/jobs/x", "/setupx",
                   "/api/jobs", "/api/settings", "/ws/abc", "/nonexistent", "/_next/static/missing.js"]:
             self.assertFalse(self.public(p), p)
+
+    def test_old_page_urls_are_public_redirects_to_the_new_pages(self):
+        self.assertEqual(LEGACY_REDIRECTS, {"/apply": "/applications/", "/tracking": "/applications/",
+                                            "/jobs": "/applications/", "/setup": "/"})
+        for old, new in LEGACY_REDIRECTS.items():
+            self.assertTrue(is_public_path(old, None), old)
+            self.assertTrue(is_public_path(old + "/", None), old)
+            self.assertIn(normalize(new), SHELL_ROUTES, new)        # every target is a real page
+            self.assertNotIn(old, SHELL_ROUTES, old)                # and no old URL is still a page
 
     def test_auth_endpoints_and_login_redirect_always_public(self):
         for p in ["/api/auth/login", "/api/auth/me", "/login", "/static/x.css"]:
@@ -62,9 +71,9 @@ class StaticShellTests(unittest.TestCase):
         self.assertFalse(self.public("/_next"))
 
     def test_path_traversal_can_never_escape_the_export(self):
-        attacks = ["/../secret.txt", "/../users.db", "/jobs/../../secret.txt",
+        attacks = ["/../secret.txt", "/../users.db", "/applications/../../secret.txt",
                    "/../../../../etc/passwd", "/..%2fsecret.txt", "//..//secret.txt",
-                   "/_next/../../secret.txt", "/jobs/../../users.db", "/\x00", "/jobs\x00.html",
+                   "/_next/../../secret.txt", "/applications/../../users.db", "/\x00", "/applications\x00.html",
                    "/..\\secret.txt", "/../out/../secret.txt"]
         for a in attacks:
             self.assertIsNone(resolve_static_file(self.out, a), repr(a))
@@ -85,7 +94,7 @@ class StaticShellTests(unittest.TestCase):
         self.assertFalse(is_public_path("/anything", self.base / "does-not-exist"))
         # dev redirect targets stay public even with no build, so an anonymous
         # visitor is sent to the dev server rather than into a redirect loop
-        for p in ["/", "/jobs", "/profile", "/settings"]:
+        for p in ["/", "/applications", "/insights", "/profile", "/settings"]:
             self.assertTrue(is_public_path(p, None), p)
 
 

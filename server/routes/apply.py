@@ -259,13 +259,6 @@ async def skip(job_id: str, uid: int = Depends(get_current_user_id)):
     return JSONResponse({"status": "skipped"})
 
 
-@router.get("/api/apply/sessions")
-async def sessions():
-    from applier.session import ApplicationSession
-    all_s = ApplicationSession.load_all()
-    return JSONResponse([s.to_dict() for s in all_s[:100]])
-
-
 @router.get("/api/apply/limits")
 async def get_limits():
     """Expose current rate-limit status to the UI (e.g. to disable

@@ -11,8 +11,7 @@ Rather than a hand-maintained allow-list of page routes (which silently breaks
 the day someone adds a page), a URL is public exactly when it maps to a real
 file inside the exported build directory. Those files contain no user data;
 everything with data is under /api/ and still needs a session. Anything the
-export doesn't contain — /apply, /tracking, /screenshots, /docs — stays
-protected by default.
+export doesn't contain — /screenshots, /docs — stays protected by default.
 """
 
 import re
@@ -42,7 +41,13 @@ def is_runner_path(path: str) -> bool:
 # The pages the Next app owns. Only used for the DEV redirect (when there is no
 # build to serve, the backend sends these to the Next dev server). Production
 # doesn't depend on this list — it goes by which files exist in the export.
-SHELL_ROUTES = ("/", "/jobs", "/applications", "/profile", "/settings")
+SHELL_ROUTES = ("/", "/applications", "/insights", "/profile", "/settings")
+
+# Old page URLs and the page that replaced each (server/routes/onboarding.py
+# redirects them, with or without a trailing slash). Public: a redirect carries
+# no data, and a logged-out bookmark should still end up on the right page.
+LEGACY_REDIRECTS = {"/apply": "/applications/", "/tracking": "/applications/",
+                    "/jobs": "/applications/", "/setup": "/"}
 
 
 def normalize(path: str) -> str:
@@ -77,6 +82,6 @@ def resolve_static_file(ui_dir: Path, url_path: str) -> Path | None:
 def is_public_path(path: str, ui_dir: Path | None) -> bool:
     if path in PUBLIC_EXACT or path.startswith(PUBLIC_PREFIXES) or is_runner_path(path):
         return True
-    if normalize(path) in SHELL_ROUTES:
+    if normalize(path) in SHELL_ROUTES or normalize(path) in LEGACY_REDIRECTS:
         return True
     return ui_dir is not None and resolve_static_file(ui_dir, path) is not None

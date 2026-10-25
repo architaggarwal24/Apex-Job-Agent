@@ -7,8 +7,7 @@ tests/test_applications_ui.py — the Applications workspace's plain-JS contract
     the round trip back to a query, and what each filter keeps - run under Node;
   * the stage names it shows (frontend/src/lib/stages.js) match db/lifecycle.py;
   * /applications is one of the Next app's routes for the dev redirect;
-  * the sidebar points at Applications instead of Jobs / Apply / Pipeline;
-  * the leftover Vite screens in frontend/src/pages can't break `npm run build` again.
+  * the sidebar points at Applications instead of Jobs / Apply / Pipeline.
 
 No network, no LLM. The Node part is skipped when Node.js is not installed.
 """
@@ -104,14 +103,6 @@ class WiringTests(unittest.TestCase):
         self.assertIn("'/applications'", nav)
         for gone in ("'/jobs'", "'/apply'", "'/tracking'"):
             self.assertNotIn(gone, nav)
-
-    def test_leftover_vite_pages_cannot_break_the_build(self):
-        pages = sorted((ROOT / "frontend" / "src" / "pages").glob("*.jsx"))
-        self.assertTrue(pages)
-        for p in pages:
-            text = p.read_text(encoding="utf-8")
-            self.assertNotRegex(text, r"from\s+['\"]react-router", p.name)  # not a dependency of the Next app
-            self.assertRegex(text, r"notFound:\s*true", p.name)              # never exported, so no case clash on Windows
 
 
 if __name__ == "__main__":

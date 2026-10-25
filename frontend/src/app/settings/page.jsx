@@ -6,8 +6,9 @@ import GeneralTab from '@/components/settings/GeneralTab'
 import ProvidersTab, { isMasked } from '@/components/settings/ProvidersTab'
 import AgentTab from '@/components/settings/AgentTab'
 import SessionsTab from '@/components/settings/SessionsTab'
+import AutomationTab from '@/components/settings/AutomationTab'
 
-const TABS = ['General', 'Providers', 'Agent Behavior', 'Job Site Sessions']
+const TABS = ['General', 'Providers', 'Agent Behavior', 'Automation', 'Job Site Sessions']
 
 export default function Settings() {
   const [tab, setTab] = useState('General')
@@ -62,6 +63,7 @@ export default function Settings() {
         ? <ProvidersTab settings={settings} providers={providers} val={val} setVal={setVal} reload={reload} onDeleted={onDeleted} />
         : <p className="m">Loading…</p>)}
       {tab === 'Agent Behavior' && (settings ? <AgentTab val={val} setVal={setVal} /> : <p className="m">Loading…</p>)}
+      {tab === 'Automation' && <AutomationTab settings={settings} reload={reload} />}
       {tab === 'Job Site Sessions' && <SessionsTab />}
 
       {needsSave && (

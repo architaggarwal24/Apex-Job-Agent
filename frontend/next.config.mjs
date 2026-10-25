@@ -18,9 +18,9 @@ const BACKEND = process.env.APEX_BACKEND_ORIGIN || 'http://127.0.0.1:8000'
 
 export default function config(phase) {
   if (phase === PHASE_PRODUCTION_BUILD) {
-    // trailingSlash → /jobs/index.html rather than /jobs.html, which is what
-    // Starlette's StaticFiles(html=True) resolves cleanly. Deliberately NOT
-    // set in dev: it would 308-redirect /api/jobs → /api/jobs/ and break the proxy.
+    // trailingSlash → /applications/index.html rather than /applications.html, which
+    // is what Starlette's StaticFiles(html=True) resolves cleanly. Deliberately NOT
+    // set in dev: it would 308-redirect /api/stats → /api/stats/ and break the proxy.
     return { output: 'export', trailingSlash: true }
   }
   return {

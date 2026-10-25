@@ -11,16 +11,10 @@ from core.throttle import login_throttle
 from db.users_db import UsersDB
 from core.auth import (
     set_session_cookie, clear_session_cookie,
-    get_current_user_id, get_current_user_id_optional,
+    get_current_user_id, get_current_user_id_optional, OWNER_USER_ID,
 )
 
 router = APIRouter()
-ROOT   = cfg.ROOT_DIR
-
-
-def _t(name: str) -> str:
-    p = ROOT / "templates" / name
-    return p.read_text(encoding="utf-8") if p.exists() else f"<h1>Missing: {name}</h1>"
 
 
 class Credentials(BaseModel):
@@ -103,7 +97,9 @@ async def me(request: Request):
             "authenticated": False,
             "signup_open": cfg.ALLOW_SIGNUP or db.count() == 0,
         })
-    return {"authenticated": True, "id": user["id"], "email": user["email"]}
+    # owner: the first account, the only one allowed the owner-only actions (core.auth.require_owner),
+    # so the UI can disable those controls instead of letting them fail with a 403
+    return {"authenticated": True, "id": user["id"], "email": user["email"], "owner": user["id"] == OWNER_USER_ID}
 
 
 @router.post("/api/auth/change-password")

@@ -341,6 +341,13 @@ class SettingsDB:
                 return default
             return self._maybe_decrypt(key, r["value"])
 
+    def unreadable_secrets(self) -> list[str]:
+        """Names (never values) of stored secrets the current encryption key can't decrypt."""
+        from core.crypto import can_decrypt
+        with self._conn() as c:
+            rows = c.execute("SELECT key, value FROM settings WHERE value LIKE 'enc:%' ORDER BY key").fetchall()
+        return [r["key"] for r in rows if is_secret_key(r["key"]) and not can_decrypt(r["value"])]
+
     def read_all(self) -> dict[str, str]:
         with self._conn() as c:
             rows = c.execute("SELECT key, value FROM settings").fetchall()

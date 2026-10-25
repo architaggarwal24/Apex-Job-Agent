@@ -11,8 +11,8 @@ db/jobs_db.JobsDB.transition() is the only code that applies one.
 It replaces three older, separately-stored ideas of "where is this job":
 jobs.status, the job_stages table and the apply-session state. The old
 vocabulary survives only as read-side translations at the bottom of this
-file, so /api/jobs, /api/apply/* and /api/tracking/* keep their shapes
-until they are removed.
+file, so the remaining /api/jobs/{id}, /api/apply/* and /api/tracking/*
+routes keep their shapes.
 """
 
 STAGES = (

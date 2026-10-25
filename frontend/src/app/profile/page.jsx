@@ -8,8 +8,7 @@ const CATEGORY_ORDER  = ['personal', 'professional', 'education', 'identity']
 
 // The DB stores data_type per field ('text','email','phone','date','number',
 // 'url','textarea','select') but not select OPTIONS — those are UI-only
-// presentation info, so they're defined here, matching the old
-// templates/profile.html exactly (same field keys, same choices).
+// presentation info, so they're defined here (keyed by the DB's field keys).
 const SELECT_OPTIONS = {
   gender: ['', 'Male', 'Female', 'Non-binary', 'Prefer not to say'],
   willing_to_relocate: ['Yes', 'No', 'Maybe'],

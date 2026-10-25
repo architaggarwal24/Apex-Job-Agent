@@ -92,15 +92,32 @@ class HttpAuthTests(unittest.TestCase):
     # ── the gate ──────────────────────────────────────────────────
 
     def test_anonymous_api_request_is_401(self):
-        self.assertEqual(self.client.get("/api/jobs").status_code, 401)
+        self.assertEqual(self.client.get("/api/applications").status_code, 401)
         self.assertEqual(self.client.get("/api/stats").status_code, 401)
 
     def test_anonymous_request_to_a_protected_page_goes_to_the_app_root(self):
         # The login screen is part of the Next app, served at "/".
-        for path in ("/apply", "/tracking", "/setup"):
+        for path in ("/docs", "/openapi.json", "/no-such-page"):
             r = self.client.get(path)
             self.assertEqual(r.status_code, 303, path)
             self.assertEqual(r.headers["location"], "/", path)
+
+    def test_old_page_urls_redirect_to_the_pages_that_replaced_them(self):
+        # Public on purpose: a logged-out bookmark lands on the right page, which
+        # then shows the login screen. Query strings survive the hop.
+        want = {"/apply": "/applications/", "/tracking": "/applications/",
+                "/jobs": "/applications/", "/setup": "/"}
+        self._signup(self._second_client(), "owner@example.com")
+        signed_in = self._second_client()
+        signed_in.post("/api/auth/login", json={"email": "owner@example.com", "password": "correct-horse-battery"})
+        for c in (self.client, signed_in):
+            for old, new in want.items():
+                for path in (old, old + "/"):
+                    r = c.get(path)
+                    self.assertEqual((r.status_code, r.headers.get("location")), (307, new), path)
+                r = c.get(old + "?stage=needs_you&q=a%20b")
+                self.assertEqual(r.headers["location"], new + "?stage=needs_you&q=a%20b", old)
+        self.assertEqual(self.client.post("/apply").status_code, 405)      # only GET is a redirect
 
     def test_old_login_url_redirects_to_the_app_and_auth_endpoints_are_public(self):
         r = self.client.get("/login")
@@ -112,29 +129,29 @@ class HttpAuthTests(unittest.TestCase):
     def _client_with_build(self):
         from server.app import create_app
         out = self.tmp_path / "out"
-        (out / "jobs").mkdir(parents=True)
+        (out / "applications").mkdir(parents=True)
         (out / "_next" / "static").mkdir(parents=True)
         (out / "index.html").write_text("SHELL-HOME")
-        (out / "jobs" / "index.html").write_text("SHELL-JOBS")
+        (out / "applications" / "index.html").write_text("SHELL-APPS")
         (out / "_next" / "static" / "app.js").write_text("console.log(1)")
         (self.tmp_path / "secret.txt").write_text("TOP-SECRET")
         return TestClient(create_app(ui_dir=out), follow_redirects=False)
 
     def test_built_app_shell_loads_for_logged_out_visitors_but_nothing_else_does(self):
         c = self._client_with_build()
-        for path, marker in (("/", "SHELL-HOME"), ("/jobs/", "SHELL-JOBS"),
+        for path, marker in (("/", "SHELL-HOME"), ("/applications/", "SHELL-APPS"),
                              ("/_next/static/app.js", "console.log")):
             r = c.get(path)
             self.assertEqual(r.status_code, 200, path)
             self.assertIn(marker, r.text, path)
-        self.assertEqual(c.get("/api/jobs").status_code, 401)
+        self.assertEqual(c.get("/api/applications").status_code, 401)
         self.assertEqual(c.get("/api/settings").status_code, 401)
-        self.assertEqual(c.get("/apply").status_code, 303)
+        self.assertEqual((c.get("/jobs/").status_code, c.get("/jobs/").headers["location"]), (307, "/applications/"))
         self.assertEqual(c.get("/docs").status_code, 303)
 
     def test_static_mount_cannot_be_used_to_read_files_outside_the_build(self):
         c = self._client_with_build()
-        for path in ("/../secret.txt", "/%2e%2e/secret.txt", "/jobs/../../secret.txt",
+        for path in ("/../secret.txt", "/%2e%2e/secret.txt", "/applications/../../secret.txt",
                      "/%2e%2e%2fsecret.txt", "/_next/../../secret.txt"):
             r = c.get(path)
             self.assertNotIn("TOP-SECRET", r.text, path)
@@ -143,18 +160,18 @@ class HttpAuthTests(unittest.TestCase):
     def test_api_routes_still_win_over_the_catch_all_static_mount(self):
         c = self._client_with_build()
         self._signup(c, "owner@example.com")
-        self.assertEqual(c.get("/api/jobs").status_code, 200)     # JSON, not index.html
-        self.assertIsInstance(c.get("/api/jobs").json(), list)
+        self.assertEqual(c.get("/api/applications").status_code, 200)     # JSON, not index.html
+        self.assertIsInstance(c.get("/api/applications").json(), list)
 
     def test_without_a_build_the_dev_server_redirect_can_be_enabled(self):
         from server.app import create_app
         os.environ["APEX_DEV_UI_ORIGIN"] = "http://localhost:3000"
         c = TestClient(create_app(ui_dir=self.tmp_path / "no-build"), follow_redirects=False)
-        for path in ("/", "/jobs", "/profile", "/settings"):
+        for path in ("/", "/applications", "/profile", "/settings"):
             r = c.get(path)        # anonymous too — must not bounce into a loop
             self.assertEqual(r.status_code, 307, path)
             self.assertEqual(r.headers["location"], "http://localhost:3000" + path, path)
-        self.assertEqual(c.get("/apply").status_code, 303)        # legacy pages stay protected
+        self.assertEqual(c.get("/apply").headers["location"], "/applications/")   # old URLs still redirect
 
     def test_screenshots_require_login(self):
         # Filled-in application forms — must never be world-readable.
@@ -163,7 +180,7 @@ class HttpAuthTests(unittest.TestCase):
 
     def test_forged_cookie_is_rejected(self):
         self.client.cookies.set("apex_session", "forged.value.here")
-        self.assertEqual(self.client.get("/api/jobs").status_code, 401)
+        self.assertEqual(self.client.get("/api/applications").status_code, 401)
 
     # ── signup policy ─────────────────────────────────────────────
 
@@ -215,20 +232,20 @@ class HttpAuthTests(unittest.TestCase):
 
     def test_session_works_then_logout_ends_it(self):
         self._signup(self.client, "owner@example.com")
-        self.assertEqual(self.client.get("/api/jobs").status_code, 200)
+        self.assertEqual(self.client.get("/api/applications").status_code, 200)
         self.assertTrue(self.client.get("/api/auth/me").json()["authenticated"])
 
         self.client.post("/api/auth/logout")
         self.client.cookies.clear()
-        self.assertEqual(self.client.get("/api/jobs").status_code, 401)
+        self.assertEqual(self.client.get("/api/applications").status_code, 401)
 
     def test_deactivated_account_session_dies_immediately(self):
         from db.users_db import UsersDB
         self._signup(self.client, "owner@example.com")
-        self.assertEqual(self.client.get("/api/jobs").status_code, 200)
+        self.assertEqual(self.client.get("/api/applications").status_code, 200)
         with UsersDB.get()._conn() as c:
             c.execute("UPDATE users SET is_active=0")
-        self.assertEqual(self.client.get("/api/jobs").status_code, 401,
+        self.assertEqual(self.client.get("/api/applications").status_code, 401,
                          "valid-signature token outlived account deactivation")
 
     # ── per-user data isolation over HTTP ─────────────────────────
@@ -246,9 +263,9 @@ class HttpAuthTests(unittest.TestCase):
         b = JobsDB(user_id=2).add({"url": "https://x.com/b", "title": "Bob Job",
                                    "company": "B", "source": "linkedin"})
 
-        self.assertEqual([j["title"] for j in self.client.get("/api/jobs").json()],
+        self.assertEqual([j["title"] for j in self.client.get("/api/applications").json()],
                          ["Alice Job"])
-        self.assertEqual([j["title"] for j in bob.get("/api/jobs").json()],
+        self.assertEqual([j["title"] for j in bob.get("/api/applications").json()],
                          ["Bob Job"])
         self.assertEqual(bob.get(f"/api/jobs/{a}").status_code, 404,
                          "Bob fetched Alice's job by ID")
@@ -444,12 +461,12 @@ class HttpAuthTests(unittest.TestCase):
 
     def test_change_password_signs_out_other_devices_but_not_this_one(self):
         laptop, phone = self._two_browsers()
-        self.assertEqual(phone.get("/api/jobs").status_code, 200)
+        self.assertEqual(phone.get("/api/applications").status_code, 200)
         r = laptop.post("/api/auth/change-password", json={
             "current_password": "correct-horse-battery", "new_password": "a-brand-new-password"})
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(laptop.get("/api/jobs").status_code, 200, "this browser must stay signed in")
-        self.assertEqual(phone.get("/api/jobs").status_code, 401, "the other device must be signed out")
+        self.assertEqual(laptop.get("/api/applications").status_code, 200, "this browser must stay signed in")
+        self.assertEqual(phone.get("/api/applications").status_code, 401, "the other device must be signed out")
         self.assertFalse(phone.get("/api/auth/me").json()["authenticated"],
                          "/me must agree with the gate or the app reload-loops")
         fresh = self._second_client()
@@ -467,7 +484,7 @@ class HttpAuthTests(unittest.TestCase):
         same  = laptop.post("/api/auth/change-password", json={"current_password": "correct-horse-battery", "new_password": "correct-horse-battery"})
         self.assertEqual((wrong.status_code, short.status_code, same.status_code), (403, 400, 400),
                          "a 401 here would make the web app think the session expired and reload")
-        self.assertEqual(laptop.get("/api/jobs").status_code, 200, "failed attempts must not sign you out")
+        self.assertEqual(laptop.get("/api/applications").status_code, 200, "failed attempts must not sign you out")
         login_throttle._fails.clear()
 
     def test_wrong_current_password_is_throttled_like_a_login(self):
@@ -482,8 +499,8 @@ class HttpAuthTests(unittest.TestCase):
     def test_logout_everywhere(self):
         laptop, phone = self._two_browsers()
         self.assertEqual(laptop.post("/api/auth/logout-everywhere").status_code, 200)
-        self.assertEqual(laptop.get("/api/jobs").status_code, 200)
-        self.assertEqual(phone.get("/api/jobs").status_code, 401)
+        self.assertEqual(laptop.get("/api/applications").status_code, 200)
+        self.assertEqual(phone.get("/api/applications").status_code, 401)
         self.assertFalse(phone.get("/api/auth/me").json()["authenticated"])
 
     def test_change_password_and_logout_everywhere_require_a_session(self):

@@ -1,128 +1,217 @@
 // frontend/src/app/page.jsx
+//
+// Today: what needs you now. It replaces the old Dashboard (and its redirect to the
+// backend's first-run /setup page - the get-started checklist here covers what /setup did).
+//
+//   counts          needs you · ready to review · interviews in the next 48 h · follow-ups due,
+//                   each a link into the Applications workspace, filtered to exactly those cards
+//   follow-ups due  with the draft, Copy, Done, Snooze               (/api/follow-ups/*)
+//   queue           running / paused, today's budget, the countdown to the next apply,
+//                   pause / resume (owner only)                       (/api/queue/*)
+//   search          run the job search (owner only)                   (/api/pipeline/*)
+//   get started     the checklist until every item is done           (GET /api/setup/checklist)
+// Everything is read live from those endpoints; stage changes stream in (/api/events/stream).
 'use client'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { api } from '@/lib/api'
-import { backendUrl } from '@/lib/backend'
+import { api, send } from '@/lib/api'
+import { nextStepWithin } from '@/lib/filters'
+import { INTERVIEW_STAGES, TODAY_LINKS, budget, countdown } from '@/lib/insights'
+import { copyText, useLiveEvents } from '@/lib/live'
+import { OWNER_ONLY, useMe } from '@/lib/me'
 
+const KIND = { check_in: 'Check in', thank_you: 'Thank you', status_ask: 'Ask for news' }
+const when = s => String(s || '').replace('T', ' ').slice(0, 16)
 
-const FUNNEL = [['applied', 'Applied'], ['recruiter_screen', 'Recruiter'],
-  ['technical_round', 'Technical'], ['hiring_manager', 'HM Round'], ['offer', 'Offer']]
-const badgeClass = s => ({ done: 'b-done', awaiting_input: 'b-wait', screenshot_review: 'b-rev',
-  filling: 'b-fill', refilling: 'b-fill', failed: 'b-fail' }[s] || 'b-idle')
+function Count({ n, label, href, tone }) {
+  return (
+    <Link className="card stat today-count" href={href} data-count={label}>
+      <div className="l">{label}</div>
+      <div className="n" style={tone ? { color: tone } : undefined}>{n ?? '—'}</div>
+      <div className="m">Open in Applications →</div>
+    </Link>
+  )
+}
 
-export default function Dashboard() {
-  const router = useRouter()
-  const [stats, setStats] = useState(null)
+function FollowUps({ items, reload, flash }) {
+  const [busy, setBusy] = useState(0)
+  const act = async (f, path, body, label) => {
+    setBusy(f.id)
+    try { await send(`/api/follow-ups/${f.id}/${path}`, 'POST', body); flash(true, label) } catch (e) { flash(false, e.message) }
+    setBusy(0); reload()
+  }
+  if (items === null) return <div className="m">Loading…</div>
+  if (!items.length) return <div className="m">No follow-ups due. Nice.</div>
+  return items.map(f => (
+    <div key={f.id} className="fu" data-follow-up={f.id}>
+      <div className="row">
+        <b>{KIND[f.kind] || f.kind}</b>
+        <Link className="link-btn" href={`/applications?job=${encodeURIComponent(f.job_id)}`}>{f.title} · {f.company}</Link>
+        <span className="m">due {when(f.status === 'snoozed' ? f.snoozed_until : f.due_at)}</span>
+      </div>
+      <pre className="pn-draft">{f.draft_text || 'No draft yet - write your own message.'}</pre>
+      <div className="row">
+        <button className="btn sm" disabled={!f.draft_text} onClick={async () => { const ok = await copyText(f.draft_text); flash(ok, ok ? 'Draft copied' : 'Could not copy') }}>Copy</button>
+        <button className="btn sm primary" disabled={busy === f.id} onClick={() => act(f, 'done', undefined, 'Marked done')}>Done</button>
+        <select className="in" style={{ width: 'auto' }} value="" disabled={busy === f.id} aria-label={`Snooze ${f.title}`}
+                onChange={e => e.target.value && act(f, 'snooze', { days: Number(e.target.value) }, `Snoozed for ${e.target.value} day(s)`)}>
+          <option value="">Snooze…</option><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option>
+        </select>
+      </div>
+    </div>))
+}
+
+function Queue({ owner, flash }) {
+  const [q, setQ] = useState(null)
+  const [now, setNow] = useState(() => new Date())
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(() => api('/api/queue/status').then(setQ).catch(e => flash(false, e.message)), [])
+  useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t) }, [load])
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
+  const toggle = async () => {
+    setBusy(true)
+    try { setQ(await send(`/api/queue/${q.paused ? 'resume' : 'pause'}`, 'POST')); flash(true, q.paused ? 'Queue resumed' : 'Queue paused') } catch (e) { flash(false, e.message) }
+    setBusy(false)
+  }
+  if (!q) return <div className="m">Loading…</div>
+  const b = budget(q.applied_today, q.daily_limit)
+  const state = !q.running ? ['stopped', 'b-fail'] : q.paused ? ['paused', 'b-wait'] : q.current_job ? ['working', 'b-fill'] : ['running', 'b-done']
+  const next = q.paused ? 'paused' : q.current_job ? 'working on one now' : !q.queue_length ? 'nothing queued'
+    : q.next_at ? countdown(q.next_at, now) : 'now'
+  return (
+    <>
+      <div className="row">
+        <span className={`badge ${state[1]}`} data-queue-state={state[0]}>{state[0]}</span>
+        <span className="m">{q.queue_length} queued</span>
+        <span className="spacer" />
+        <button className="btn sm" disabled={!owner || busy} title={owner ? '' : OWNER_ONLY} onClick={toggle}>{q.paused ? 'Resume' : 'Pause'}</button>
+      </div>
+      {q.current_job && <div className="m" style={{ marginTop: '.5rem' }}>Now: {q.current_job.title} · {q.current_job.company}</div>}
+      <div className="budget" title="Applied today against the daily limit">
+        <div className="row"><span className="m">Today's budget</span><span className="spacer" /><b data-budget>{b.text}</b></div>
+        {b.pct !== null && <div className={`budget-bar ${b.full ? 'full' : ''}`}><i style={{ width: `${b.pct}%` }} /></div>}
+      </div>
+      <div className="row"><span className="m">Next apply</span><span className="spacer" /><b data-next-apply>{next}</b></div>
+      {!owner && <div className="hint">{OWNER_ONLY} The queue runs the owner's browser.</div>}
+    </>
+  )
+}
+
+function SearchPrefs({ item, reload, flash }) {
+  const [titles, setTitles] = useState((item.titles || []).join(', '))
+  const [places, setPlaces] = useState((item.locations || []).join(', '))
+  const split = s => s.split(',').map(x => x.trim()).filter(Boolean)
+  const save = async () => {
+    try { await send('/api/search-prefs', 'POST', { positions: split(titles), locations: split(places) }); flash(true, 'Search preferences saved'); reload() }
+    catch (e) { flash(false, e.message) }
+  }
+  return (
+    <div className="grid2" style={{ marginTop: '.5rem' }}>
+      <input className="in" placeholder="Job titles, e.g. AI Engineer, Backend Engineer" value={titles} onChange={e => setTitles(e.target.value)} aria-label="Job titles" />
+      <input className="in" placeholder="Locations, e.g. Bangalore, Remote" value={places} onChange={e => setPlaces(e.target.value)} aria-label="Locations" />
+      <div className="row"><button className="btn sm" disabled={!split(titles).length || !split(places).length} onClick={save}>Save</button></div>
+    </div>
+  )
+}
+
+function Checklist({ data, reload, owner, runSearch, flash }) {
+  return (
+    <div className="card section checklist">
+      <div className="row"><h2 style={{ padding: 0 }}>Get started</h2><span className="m">{data.done} of {data.total} done</span></div>
+      <ol>{data.items.map(i => (
+        <li key={i.key} className={i.done ? 'done' : ''} data-item={i.key}>
+          <span className="ck" aria-label={i.done ? 'done' : 'to do'}>{i.done ? '✓' : '○'}</span>
+          <div className="ck-body">
+            <div className="row"><b>{i.label}</b><span className="m">{i.detail}</span><span className="spacer" />
+              {!i.done && i.href && <Link className="btn sm" href={i.href}>Go</Link>}
+              {!i.done && i.key === 'search' && <button className="btn sm" disabled={!owner} title={owner ? '' : OWNER_ONLY} onClick={() => runSearch(false)}>Run search</button>}
+            </div>
+            {!i.done && i.key === 'search_prefs' && <SearchPrefs item={i} reload={reload} flash={flash} />}
+          </div>
+        </li>))}</ol>
+    </div>
+  )
+}
+
+export default function Today() {
+  const me = useMe()
+  const owner = !!me?.owner
+  const [apps, setApps] = useState(null)
+  const [due, setDue] = useState(null)
+  const [list, setList] = useState(null)
   const [status, setStatus] = useState(null)
-  const [sessions, setSessions] = useState([])
+  const [msg, setMsg] = useState(null)
   const [running, setRunning] = useState(false)
-  const [pipeMsg, setPipeMsg] = useState('')
+  const flash = (ok, text) => setMsg({ ok, text })
+  useEffect(() => { if (!msg) return undefined; const t = setTimeout(() => setMsg(null), 6000); return () => clearTimeout(t) }, [msg])
 
-  const loadStats = () => { api('/api/stats').then(setStats).catch(() => {}); api('/api/status').then(st => {
-    setStatus(st)
-    if (st.profile_complete === false) window.location.href = backendUrl('/setup')
-  }).catch(() => {}) }
-  const loadSessions = () => api('/api/apply/sessions').then(setSessions).catch(() => {})
-
+  const loadApps = useCallback(() => api('/api/applications?limit=2000').then(setApps).catch(() => setApps([])), [])
+  const loadDue = useCallback(() => api('/api/follow-ups/due').then(setDue).catch(() => setDue([])), [])
+  const loadList = useCallback(() => api('/api/setup/checklist').then(setList).catch(() => {}), [])
   useEffect(() => {
-    loadStats(); loadSessions()
-    const a = setInterval(loadStats, 12000), b = setInterval(loadSessions, 15000)
-    return () => { clearInterval(a); clearInterval(b) }
-  }, [])
+    loadApps(); loadDue(); loadList(); api('/api/status').then(setStatus).catch(() => {})
+    const t = setInterval(() => { loadDue(); loadList() }, 30000)
+    return () => clearInterval(t)
+  }, [loadApps, loadDue, loadList])
+  useLiveEvents(() => { loadApps(); loadDue() })
 
-  const runPipeline = async (quick = false) => {
-    setRunning(true); setPipeMsg('Running…')
-    try {
-      await api('/api/pipeline/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quick }) })
-      setPipeMsg('✓ Pipeline running in background — check logs for progress')
-    } catch (e) { setPipeMsg(e.status === 403 ? 'Only the owner account can run the pipeline' : '✗ Failed to start') }
-    setTimeout(() => { setRunning(false); loadStats() }, 3000)
+  const runSearch = async quick => {
+    setRunning(true)
+    try { await send('/api/pipeline/run', 'POST', { quick }); flash(true, 'Search running in the background - new jobs appear in Applications as they are scored') }
+    catch (e) { flash(false, e.status === 403 ? 'Only the owner account can run the search' : e.message) }
+    setTimeout(() => { setRunning(false); loadList() }, 3000)
   }
-  const cancelPipeline = async () => {
-    setPipeMsg('Cancelling…')
-    try { await api('/api/pipeline/cancel', { method: 'POST' }); setPipeMsg('⏹ Cancel requested — finishing current step then stopping') }
-    catch { setPipeMsg('✗ Cancel failed') }
+  const cancelSearch = async () => {
+    try { await send('/api/pipeline/cancel', 'POST'); flash(true, 'Cancel requested - finishing the current step, then stopping') } catch (e) { flash(false, e.message) }
   }
 
-  const awaiting = stats?.sessions?.awaiting_input ?? 0
+  const now = new Date()
+  const count = pred => (apps ? apps.filter(pred).length : null)
+  const counts = {
+    needs_you: count(a => a.stage === 'needs_you'),
+    ready: count(a => a.stage === 'ready_for_review'),
+    interviews: count(a => INTERVIEW_STAGES.includes(a.stage) && nextStepWithin(a.next_step_at, 48, now)),
+    follow_ups: due ? new Set(due.map(f => f.job_id)).size : null,
+  }
 
   return (
     <>
-      <h1>Dashboard</h1>
+      <h1>Today</h1>
       <p className="sub">
-        Autonomous job application agent
+        {now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
         {status?.llm && <span className="chip" style={{ marginLeft: 10 }}>{status.llm.label || status.llm.provider} / {status.llm.model}</span>}
         {status?.dry_run && <span className="chip mid" style={{ marginLeft: 6 }}>Dry run</span>}
       </p>
+      {msg && <div className={`toast ${msg.ok ? 'ok' : 'err'}`} role="status">{msg.text}</div>}
+      {list && !list.complete && <Checklist data={list} reload={loadList} owner={owner} runSearch={runSearch} flash={flash} />}
 
-      {awaiting > 0 && (
-        <div className="alert">
-          ⚠️ <b>{awaiting}</b> application{awaiting > 1 ? 's' : ''} waiting on a question only you can answer —
-          <Link href="/applications?needs_you=1" style={{ color: 'var(--acc2)', marginLeft: 4 }}>answer in Applications →</Link>
+      <div className="stats today-counts">
+        <Count n={counts.needs_you} label="Needs you" href={TODAY_LINKS.needs_you} tone="var(--ylw)" />
+        <Count n={counts.ready} label="Ready to review" href={TODAY_LINKS.ready_for_review} />
+        <Count n={counts.interviews} label="Interviews in 48 h" href={TODAY_LINKS.interviews} tone="var(--grn)" />
+        <Count n={counts.follow_ups} label="Follow-ups due" href={TODAY_LINKS.follow_ups} />
+      </div>
+
+      <div className="today-grid">
+        <div className="card section">
+          <h2 style={{ padding: 0, marginBottom: 'var(--sp2)' }}>Follow-ups due</h2>
+          <FollowUps items={due} reload={() => { loadDue(); loadApps() }} flash={flash} />
         </div>
-      )}
-
-      <div className="stats">
-        <div className="card stat"><div className="l">Total Jobs</div><div className="n">{stats?.total ?? '—'}</div></div>
-        <div className="card stat"><div className="l">Applied</div><div className="n" style={{ color: 'var(--grn)' }}>{stats?.applied ?? '—'}</div></div>
-        <div className="card stat"><div className="l">Avg AI Score</div><div className="n">{stats?.avg_score ? `${stats.avg_score}/100` : '—'}</div></div>
-        <div className="card stat"><div className="l">Awaiting Input</div><div className="n" style={{ color: 'var(--ylw)' }}>{awaiting}</div></div>
-        <div className="card stat"><div className="l">Pending Review</div><div className="n">{stats?.sessions?.screenshot_review ?? 0}</div></div>
-        <div className="card stat"><div className="l">Errors</div><div className="n" style={{ color: 'var(--red)' }}>{stats?.error ?? 0}</div></div>
-      </div>
-
-      <div className="actions">
-        <Link className="card action" href="/applications" style={{ textDecoration: 'none' }}>
-          <div className="ic">🔍</div><div><div className="t">Search Jobs</div><div className="d">Scrape LinkedIn, Indeed & Naukri, score with AI</div></div>
-        </Link>
-        <Link className="card action" href="/applications?stage=found,queued" style={{ textDecoration: 'none' }}>
-          <div className="ic">📄</div><div><div className="t">Apply to Jobs</div><div className="d">Universal form filler — any URL</div></div>
-        </Link>
-        <Link className="card action" href="/applications?stage=submitted,recruiter_screen,technical_round,hiring_manager,offer,rejected,withdrawn" style={{ textDecoration: 'none' }}>
-          <div className="ic">📊</div><div><div className="t">Pipeline Board</div><div className="d">Track application stages</div></div>
-        </Link>
-        <Link className="card action" href="/profile" style={{ textDecoration: 'none' }}>
-          <div className="ic">👤</div><div><div className="t">Edit Profile</div><div className="d">Update data used in form filling</div></div>
-        </Link>
-      </div>
-
-      <div className="card" style={{ marginBottom: 20, padding: 18 }}>
-        <div className="row">
-          <button className="btn primary" disabled={running} onClick={() => runPipeline(false)}>
-            {running ? '…' : 'Run Pipeline'}
-          </button>
-          <button className="btn" onClick={() => runPipeline(true)} disabled={running}>Quick Run</button>
-          {running && <button className="btn danger" onClick={cancelPipeline}>Cancel</button>}
-          <span className="m">{pipeMsg}</span>
+        <div>
+          <div className="card section">
+            <h2 style={{ padding: 0, marginBottom: 'var(--sp2)' }}>Queue</h2>
+            <Queue owner={owner} flash={flash} />
+          </div>
+          <div className="card section">
+            <h2 style={{ padding: 0, marginBottom: 'var(--sp2)' }}>Job search</h2>
+            <div className="row">
+              <button className="btn primary" disabled={!owner || running} title={owner ? '' : OWNER_ONLY} onClick={() => runSearch(false)}>{running ? '…' : 'Run search'}</button>
+              <button className="btn" disabled={!owner || running} title={owner ? '' : OWNER_ONLY} onClick={() => runSearch(true)}>Quick run</button>
+              <button className="btn danger" disabled={!owner} title={owner ? '' : OWNER_ONLY} onClick={cancelSearch}>Cancel</button>
+            </div>
+            {!owner && me && <div className="hint">{OWNER_ONLY}</div>}
+          </div>
         </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 20, overflow: 'hidden' }}>
-        <div className="bar" style={{ padding: '18px 22px 0' }}><b>Application Pipeline</b></div>
-        <div className="funnel">
-          {FUNNEL.map(([key, label]) => (
-            <div key={key}><div className="n">{stats?.pipeline?.[key] ?? 0}</div><div className="l">{label}</div></div>
-          ))}
-        </div>
-      </div>
-
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <div className="bar" style={{ padding: '18px 22px 0' }}><b>Recent Applications</b></div>
-        {sessions.length === 0 ? <div className="empty">No applications yet</div> : (
-          <table>
-            <thead><tr><th>Job</th><th>Company</th><th>AI Score</th><th>Status</th><th>Updated</th></tr></thead>
-            <tbody>{sessions.slice(0, 10).map(s => (
-              <tr key={s.job_id} onClick={() => router.push(`/applications?job=${encodeURIComponent(s.job_id)}`)}>
-                <td className="t">{s.job_title}</td>
-                <td className="m">{s.company}</td>
-                <td className="m">—</td>
-                <td><span className={`badge ${badgeClass(s.state)}`}>{s.state.replace(/_/g, ' ')}</span></td>
-                <td className="m">{(s.updated_at || '').slice(0, 16).replace('T', ' ')}</td>
-              </tr>))}</tbody>
-          </table>
-        )}
       </div>
     </>
   )
