@@ -300,6 +300,7 @@ class QueueWorker:
         if self.is_paused():
             return "paused"
         db, settings = self._db(), self._settings()
+        self._sweep_runner_tasks(db)
         queued = db.jobs_in_stage("queued")
         if not queued:
             return "idle"
@@ -371,6 +372,12 @@ class QueueWorker:
             with self._state_lock:
                 self._current = None
 
+        # A first pass LEFT FOR A RUNNER (applier/executors.py) is still in flight: the
+        # job stays in "preparing" until the runner reports back. Nothing has failed,
+        # and there is nothing to pace - the browser work happens on the user's computer.
+        if not error and db.get_stage(job_id) == "preparing" and self._left_for_runner(db, job_id):
+            return
+
         # The Orchestrator moves the job itself. If it left it in "preparing"
         # (it crashed, or returned without a result) nothing else ever would.
         try:
@@ -389,9 +396,28 @@ class QueueWorker:
 
         if final and final["to_stage"] == "skipped" and "preflight" in final["detail"]:
             return                                 # pre-flight ruled it out: no browser, no pacing delay
+        if final and final["to_stage"] == "ready_for_review" and final["detail"].get("assist"):
+            return                                 # assist mode: no browser, no site contact, nothing to pace
         lo, hi = delay_bounds(settings)
         with self._state_lock:
             self._not_before = self._clock() + self._rng(lo, hi)
+
+    def _left_for_runner(self, db, job_id: str) -> bool:
+        try:
+            from db.runner_db import RunnerTaskStore
+            return RunnerTaskStore(self.user_id, db.path).has_open_task(job_id)
+        except Exception:
+            logger.exception("[Queue] could not check for a runner task")
+            return False
+
+    def _sweep_runner_tasks(self, db):
+        """Re-queue / expire runner tasks whose runner went quiet (applier/runner_hub.py).
+        A runner's own polling does this too; this covers the runner being gone."""
+        try:
+            from applier.runner_hub import RunnerHub
+            RunnerHub(self.user_id, db.path, clock=self._clock).sweep()
+        except Exception:
+            logger.exception("[Queue] runner task sweep failed")
 
     @staticmethod
     def _last_transition(db, job_id: str) -> dict | None:
@@ -476,6 +502,8 @@ class QueueWorker:
         (nothing is running yet when this is called): back to "queued"."""
         db, n = self._db(), 0
         for job in db.jobs_in_stage("preparing"):
+            if self._left_for_runner(db, job["job_id"]):
+                continue                    # a runner may still deliver; its task's lease decides
             try:
                 db.transition(job["job_id"], "queued", actor="system",
                               note="Interrupted by a restart; back in the queue",

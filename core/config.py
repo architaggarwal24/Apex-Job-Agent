@@ -24,11 +24,8 @@ class Config:
     JOBS_DB_PATH    = ROOT / "data" / "jobs.db"
 
     # ── LLM ───────────────────────────────────────────────────────
-    LLM_PROVIDER    = os.getenv("LLM_PROVIDER",    "mistral").lower().strip()
+    LLM_PROVIDER    = os.getenv("LLM_PROVIDER",    "nvidia").lower().strip()
     LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))
-
-    MISTRAL_API_KEY   = os.getenv("MISTRAL_API_KEY",   "")
-    MISTRAL_MODEL     = os.getenv("MISTRAL_MODEL",     "mistral-medium-latest")
 
     NVIDIA_API_KEY    = os.getenv("NVIDIA_NIM_API_KEY", "")
     NVIDIA_MODEL      = os.getenv("NVIDIA_NIM_MODEL",   "deepseek-ai/deepseek-v3.2")

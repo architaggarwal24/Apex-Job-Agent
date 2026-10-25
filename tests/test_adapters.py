@@ -830,7 +830,7 @@ class OrchestratorTests(unittest.TestCase):
 
     def test_any_other_site_runs_through_the_universal_filler(self):
         for url in ("https://example.com/careers/1", "https://acme.wd5.myworkdayjobs.com/en-US/x",
-                    "https://jobs.ashbyhq.com/a/b", "https://www.linkedin.com/jobs/view/1"):
+                    "https://jobs.ashbyhq.com/a/b", "https://www.naukri.com/job-listings-dev-acme-1"):
             self.calls.clear()
             jid = self.job(url)
             self.orchestrator(jid).run_iter1()

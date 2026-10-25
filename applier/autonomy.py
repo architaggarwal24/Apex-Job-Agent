@@ -104,6 +104,22 @@ def first_matching_rule(rules: list[dict], *, site_type: str, ai_score, packet: 
     return None
 
 
+def auto_submitted(events: list[dict], event_id: int) -> bool:
+    """True if the move to submitted with id `event_id` was an autonomy rule's doing: the
+    last thing before it, since the job's previous stage change, is an autonomy_approved
+    step that was not a dry run (consider_auto_approval logs it, then the Orchestrator
+    submits). `events` is the job's timeline, oldest first (JobsDB.get_application)."""
+    approved = False
+    for e in events:
+        if e["id"] == event_id:
+            return approved and e["to_stage"] == "submitted"
+        if e["kind"] != "step":
+            approved = False                         # a stage change since: whatever came before is over
+        elif (e.get("detail") or {}).get("step") == "autonomy_approved":
+            approved = not (e.get("detail") or {}).get("dry_run")
+    return False
+
+
 # ── what the Orchestrator calls (each is safe to call: bookkeeping must not
 #    stop an application, so they log instead of raising) ──────────────────
 

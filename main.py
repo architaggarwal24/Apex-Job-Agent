@@ -175,6 +175,10 @@ def start_server(dev_ui: bool = False):
     app = create_app()
     from server.routes.queue import get_worker
     get_worker().start()          # recovers interrupted jobs, then works the queue
+    from intelligence import prep
+    prep.start_background()       # prep for cards entering an interview/offer stage
+    from core import notifier
+    notifier.start_background()   # e-mail / Telegram when the agent needs you
     llm = provider_info()
     logger.info(f"Starting Apex Job Agent UI → http://localhost:{cfg.APP_PORT}")
     logger.info(f"LLM: {llm['provider']} / {llm['model']}")

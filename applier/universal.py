@@ -80,6 +80,7 @@ def run_application(
     profile: dict,
     emit=None,
     answers=None,
+    resume_path=None,
 ) -> dict:
     """
     Run the full application flow for a job.
@@ -186,7 +187,7 @@ def run_application(
                    f"{len(analysis.fillable)} fillable, {len(analysis.missing)} missing")
 
         filled, failed = execute(page, analysis,
-                                 resume_path=cfg.RESUME_PATH)
+                                 resume_path=resume_path or cfg.RESUME_PATH)
         _report_filled(emit, filled, failed)
         review_fields.extend(_snapshot(analysis, hits, page_num))
 
@@ -232,6 +233,7 @@ def run_iteration2(
     missing_keys: list[str],
     emit=None,
     answers=None,
+    resume_path=None,
 ) -> dict:
     """
     Re-open the form and fill only previously-missing fields.
@@ -283,7 +285,7 @@ def run_iteration2(
         )
         hits = _apply_answers(answers, analysis, emit)
 
-        filled, failed = execute(page, analysis, resume_path=cfg.RESUME_PATH)
+        filled, failed = execute(page, analysis, resume_path=resume_path or cfg.RESUME_PATH)
         _report_filled(emit, filled, failed)
         review_fields.extend(_snapshot(analysis, hits, page_num))
 
@@ -320,6 +322,7 @@ def run_submit(
     emit=None,
     dry_run: bool = False,
     answers=None,
+    resume_path=None,
 ) -> dict:
     """
     Final submit: re-open form, fill everything, click Submit.
@@ -370,7 +373,7 @@ def run_submit(
         )
         _apply_answers(answers, analysis, emit)
 
-        filled, failed = execute(page, analysis, resume_path=cfg.RESUME_PATH)
+        filled, failed = execute(page, analysis, resume_path=resume_path or cfg.RESUME_PATH)
         _report_filled(emit, filled, failed)
         _log(emit, f"Filled form page {page_num + 1}")
 

@@ -18,6 +18,7 @@ import json
 import logging
 import random
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
@@ -171,54 +172,47 @@ class Orchestrator:
         self._stage("preparing", strict=True)
         if not self._preflight():
             return s
+        if self._apply_mode() == "assist":
+            return self._assist_ready(emit)
+        self._prepare_kit()
         s.transition(State.ANALYZING, "Starting application")
         s.iteration = 1
         s.filler = ""                       # a (re)start chooses its filler afresh
         self._emit(emit, "state", State.ANALYZING.value)
 
-        from playwright.sync_api import sync_playwright
-
         profile = self.profile_db.summary()
+        result, settled = self._execute("apply", "Iter1", profile, emit, {})
+        if settled is not None:
+            return settled
+        return self._finish_first_pass(result, emit)
 
-        with sync_playwright() as pw:
-            try:
-                ctx  = self._open_browser(pw)
-                page = ctx.pages[0] if ctx.pages else ctx.new_page()
-            except Exception as e:
-                return self._fail(f"Browser launch failed: {e}", e)
+    def _finish_first_pass(self, result: dict, emit=None):
+        """What happens once the first pass has produced `result` - here, or on a
+        runner (finish_pass): record the screenshots, fail or flag what is missing,
+        then park the application for your answers or for review."""
+        s = self.session
+        try:
+            s.screenshots.extend(result.get("screenshots", []))
 
-            try:
-                s.transition(State.FILLING, "Analyzing and filling form")
-                self._emit(emit, "state", State.FILLING.value)
+            if not result["success"] and result.get("error"):
+                return self._fail(result["error"])
 
-                result = self._run_pass("run_application", page, profile, emit=self._emit_fn(emit),
-                                        **self._answers_kw(profile))
-                s.screenshots.extend(result.get("screenshots", []))
-
-                if not result["success"] and result.get("error"):
-                    ctx.close()
-                    return self._fail(result["error"])
-
-                # Flag missing fields
-                for ff in result.get("missing_fields", []):
-                    self.profile_db.flag_missing(
-                        job_id=      self.job_id,
-                        job_url=     self.job["url"],
-                        job_title=   self.job["title"],
-                        company=     self.job["company"],
-                        field_label= ff.label,
-                        field_key=   ff.field_key,
-                        field_type=  ff.field_type,
-                        options=     ff.options,
-                        placeholder= ff.placeholder,
-                    )
-                ctx.close()
-
-            except Exception as e:
-                logger.exception(f"Iter1 error {self.job_id}")
-                try: ctx.close()
-                except Exception: pass
-                return self._fail(str(e), e)
+            # Flag missing fields
+            for ff in result.get("missing_fields", []):
+                self.profile_db.flag_missing(
+                    job_id=      self.job_id,
+                    job_url=     self.job["url"],
+                    job_title=   self.job["title"],
+                    company=     self.job["company"],
+                    field_label= ff.label,
+                    field_key=   ff.field_key,
+                    field_type=  ff.field_type,
+                    options=     ff.options,
+                    placeholder= ff.placeholder,
+                )
+        except Exception as e:
+            logger.exception(f"Iter1 error {self.job_id}")
+            return self._fail(str(e), e)
 
         # Build missing prompts for UI
         pending = self.profile_db.get_pending_missing(self.job_id)
@@ -229,6 +223,8 @@ class Orchestrator:
              **self._confirmation(r["field_key"])}
             for r in pending
         ]
+
+        packet = self._store_packet(result, merge=False)
 
         if s.missing_prompts:
             self._stage("needs_you", reason="question",
@@ -242,6 +238,7 @@ class Orchestrator:
             self._stage("ready_for_review", screenshot=self._last_screenshot())
             s.transition(State.REVIEW, "Form filled — review screenshot")
             self._emit(emit, "screenshot_review", {"screenshots": s.screenshots})
+            self._review_ready_step(packet)
 
         s.save()
         if s.state == State.REVIEW.value:
@@ -257,36 +254,36 @@ class Orchestrator:
         self._stage("preparing", strict=True)
         if not self._preflight():
             return s
+        if self._apply_mode() == "assist":
+            return self._assist_ready(emit)
         s.transition(State.REFILLING, "Filling missing fields (pass 2)")
         s.iteration = 2
         self._emit(emit, "state", State.REFILLING.value)
 
         missing_keys = [p["field_key"] for p in s.missing_prompts]
         profile = self.profile_db.summary()
+        result, settled = self._execute("refill", "Iter2", profile, emit, {"missing_keys": missing_keys})
+        if settled is not None:
+            return settled
+        return self._finish_second_pass(result, emit)
 
-        from playwright.sync_api import sync_playwright
-
-        with sync_playwright() as pw:
-            try:
-                ctx  = self._open_browser(pw)
-                page = ctx.pages[0] if ctx.pages else ctx.new_page()
-            except Exception as e:
-                return self._fail(f"Browser launch failed: {e}", e)
-            try:
-                result = self._run_pass("run_iteration2", page, profile, missing_keys,
-                                        emit=self._emit_fn(emit), **self._answers_kw(profile))
-                s.screenshots.extend(result.get("screenshots", []))
-                ctx.close()
-            except Exception as e:
-                logger.exception(f"Iter2 error {self.job_id}")
-                try: ctx.close()
-                except Exception: pass
-                return self._fail(str(e), e)
+    def _finish_second_pass(self, result: dict, emit=None):
+        """The second pass produced `result` (here, or on a runner): back to review."""
+        s = self.session
+        try:
+            s.screenshots.extend(result.get("screenshots", []))
+        except Exception as e:
+            logger.exception(f"Iter2 error {self.job_id}")
+            return self._fail(str(e), e)
+        if not result.get("success") and result.get("error"):
+            return self._fail(result["error"])            # the packet keeps what the first pass found
 
         s.missing_prompts = []
+        packet = self._store_packet(result, merge=True)
         self._stage("ready_for_review", screenshot=self._last_screenshot())
         s.transition(State.REVIEW, "Pass 2 complete — review screenshot")
         self._emit(emit, "screenshot_review", {"screenshots": s.screenshots})
+        self._review_ready_step(packet)
         s.save()
         self._after_review(emit)
         return s
@@ -332,6 +329,10 @@ class Orchestrator:
         """`actor` is who approved it: "user" (the default), or "autonomy" when
         a rule did (applier/autonomy.py has already recorded that)."""
         s = self.session
+        if self._apply_mode() == "assist":
+            self._step("assist_submit_blocked", "Assist mode: the agent does not submit - apply on the "
+                                                "site yourself, then mark it applied")
+            return s
         if not self._preflight():          # e.g. it went out another way since the review
             return s
         if actor != "autonomy":
@@ -340,6 +341,7 @@ class Orchestrator:
         if corrections:
             s.corrections = corrections
             self._apply_corrections(corrections)
+        self._use_reviewed_values(only_user=bool(corrections))
 
         # Dry run is read from SettingsDB (UI-managed) with .env as fallback.
         # When enabled, the form is filled and screenshotted exactly as
@@ -353,28 +355,20 @@ class Orchestrator:
         self._emit(emit, "state", State.SUBMITTING.value)
 
         profile = self.profile_db.summary()
+        result, settled = self._execute("submit", "Submit", profile, emit,
+                                        {"corrections": corrections, "dry_run": dry_run})
+        if settled is not None:
+            return settled
+        return self._finish_submit(result, dry_run, emit)
 
-        from playwright.sync_api import sync_playwright
-
-        with sync_playwright() as pw:
-            try:
-                ctx  = self._open_browser(pw)
-                page = ctx.pages[0] if ctx.pages else ctx.new_page()
-            except Exception as e:
-                return self._fail(f"Browser launch failed: {e}", e)
-            try:
-                result = self._run_pass("run_submit", page, profile,
-                                        corrections=corrections,
-                                        emit=self._emit_fn(emit),
-                                        dry_run=dry_run,
-                                        **self._answers_kw(profile))
-                s.screenshots.extend(result.get("screenshots", []))
-                ctx.close()
-            except Exception as e:
-                logger.exception(f"Submit error {self.job_id}")
-                try: ctx.close()
-                except Exception: pass
-                return self._fail(str(e), e)
+    def _finish_submit(self, result: dict, dry_run: bool, emit=None):
+        """The submit pass produced `result` (here, or on a runner): record it."""
+        s = self.session
+        try:
+            s.screenshots.extend(result.get("screenshots", []))
+        except Exception as e:
+            logger.exception(f"Submit error {self.job_id}")
+            return self._fail(str(e), e)
 
         if result.get("success"):
             if dry_run:
@@ -393,6 +387,87 @@ class Orchestrator:
 
         s.save()
         return s
+
+    # ── the review packet (applier/review.py, db/review_db.py) ────
+
+    def _packet_owner(self) -> int:
+        from db.answer_bank_db import PROFILE_OWNER_ID
+        return self.job.get("user_id") or PROFILE_OWNER_ID
+
+    def _resume_name(self) -> str:
+        """The file name of the resume this application uploads, or "" when there is none."""
+        try:
+            from applier import kit
+            source = kit.resume_for(self.job, self.jobs_db.path)
+            if source is not None:
+                return source.filename
+        except Exception:
+            pass
+        return cfg.RESUME_PATH.name if Path(cfg.RESUME_PATH).exists() else ""
+
+    def _store_packet(self, result: dict, merge: bool):
+        """Record what the form code put on the page as this application's review packet: one
+        entry per field, who it came from, how sure, whether to look twice. The first pass
+        replaces any earlier packet (a restart starts afresh); a later pass folds into it.
+        Whatever goes wrong is logged and the application carries on - without a packet the
+        submit simply re-analyses the form. Returns the packet, or None (also when the pass
+        reported no fields)."""
+        try:
+            from applier import review
+            from db.review_db import ReviewStore
+            uid = self._packet_owner()
+            flat = (self.profile_db.summary() or {}).get("_answered") if uid == self._profile_owner() else None
+            snapshots = (result.get("review") or {}).get("fields") or []
+            if not snapshots:
+                return None                    # the form code reported nothing to review: no packet, nothing to announce
+            # the runner protocol does not require a field type; the form code always sets one
+            fields = review.build_fields([{"type": "text", **s} for s in snapshots if isinstance(s, dict)], flat or {})
+            shots = [Path(p).name for p in result.get("screenshots", []) if p]
+            url = (result.get("review") or {}).get("url") or self.job.get("url", "")
+            store = ReviewStore(uid, self.jobs_db.path)
+            old = store.get(self.job_id) if merge else None
+            packet = review.build_packet(self.job_id, url, self._resume_name(), shots, fields)
+            if old:
+                packet["fields"] = review.merge_fields(old["fields"], fields)
+                packet["built_at"] = old.get("built_at", packet["built_at"])
+            store.save(self.job_id, packet)
+            return packet
+        except Exception:
+            logger.exception(f"[Session {self.job_id[:8]}] could not store the review packet; continuing without it")
+            return None
+
+    @staticmethod
+    def _profile_owner() -> int:
+        from db.answer_bank_db import PROFILE_OWNER_ID
+        return PROFILE_OWNER_ID
+
+    def _review_ready_step(self, packet):
+        if packet is None:
+            return
+        n = len(packet["fields"])
+        flagged = sum(1 for f in packet["fields"] if f["flagged"])
+        self._step("review_ready", f"Review ready: {n} field{'s' if n != 1 else ''}, {flagged} flagged",
+                   {"fields": n, "flagged": flagged})
+
+    def _use_reviewed_values(self, only_user: bool):
+        """Approving submits what was REVIEWED, not a fresh re-analysis that might read the form
+        differently: the packet's values become this application's own answers, which the
+        form code puts on the form ahead of anything it works out afresh. With free-text
+        corrections (only_user) just the values you set yourself are kept, so the corrections
+        can change the rest. No packet (an application reviewed the older way) or one that
+        cannot be read: nothing changes and the form is analysed afresh."""
+        try:
+            from applier import review
+            from db.review_db import ReviewStore
+            packet = ReviewStore(self._packet_owner(), self.jobs_db.path).get(self.job_id)
+            reviewed = review.reviewed_answers(packet, only_user=only_user)
+        except Exception:
+            logger.exception(f"[Session {self.job_id[:8]}] could not read the review packet; "
+                             "the form will be analysed afresh")
+            return
+        if reviewed:
+            self.session.application_answers.update(reviewed)
+            self.session.save()
 
     @staticmethod
     def _dry_run_enabled() -> bool:
@@ -474,6 +549,136 @@ class Orchestrator:
         self.session.skip(result.message)
         return False
 
+    # ── the executor seam ─────────────────────────────────────────
+
+    def _executor(self):
+        """Who does the browser work for this application (applier/executors.py):
+        this machine, or a runner on the user's own computer. Today's behaviour
+        (the server) if anything about the choice cannot be read."""
+        from applier import executors
+        from db.answer_bank_db import PROFILE_OWNER_ID
+        try:
+            return executors.choose(self._settings(), self.job.get("user_id") or PROFILE_OWNER_ID,
+                                    self.jobs_db.path)
+        except Exception:
+            logger.exception(f"[Session {self.job_id[:8]}] could not choose an executor; using the server")
+            return executors.ServerExecutor()
+
+    def _before_pass(self, kind: str, emit=None):
+        """Called by the executor once it is ready to start the pass."""
+        if kind == "apply":
+            self.session.transition(State.FILLING, "Analyzing and filling form")
+            self._emit(emit, "state", State.FILLING.value)
+
+    def _execute(self, kind: str, label: str, profile, emit, params: dict):
+        """Run the browser part of a pass through the executor. Returns
+        (result, None) when there is a result to finish, or (None, session) when
+        the pass is already settled for now: failed, or LEFT FOR A RUNNER (the
+        runner's report resumes it through finish_pass)."""
+        from applier import executors
+        try:
+            outcome = self._executor().execute(self, kind, profile, emit, params)
+        except executors.BrowserLaunchError as e:
+            return None, self._fail(f"Browser launch failed: {e.original}", e.original)
+        except Exception as e:
+            logger.exception(f"{label} error {self.job_id}")
+            return None, self._fail(str(e), e)
+        if outcome.deferred:
+            return None, self.session
+        return outcome.result, None
+
+    def finish_pass(self, kind: str, result: dict, params: dict | None = None, emit=None):
+        """Continue an application whose pass ran somewhere else (a runner): the
+        steps run_iter1 / run_iter2 / submit take once the form code has returned
+        `result`. A failure the runner reported fails the application, whatever the pass."""
+        params = params or {}
+        if not result.get("success") and result.get("error"):
+            self.session.screenshots.extend(result.get("screenshots", []))
+            return self._fail(result["error"])
+        if kind == "apply":
+            return self._finish_first_pass(result, emit)
+        if kind == "refill":
+            return self._finish_second_pass(result, emit)
+        if kind == "submit":
+            # what the runner says it did decides: a dry run it reports is not a submission,
+            # whatever the task asked for; with no word on it, the task's setting stands
+            dry_run = bool(result["dry_run"]) if "dry_run" in result else bool(params.get("dry_run"))
+            return self._finish_submit(result, dry_run, emit)
+        raise ValueError(f"unknown pass kind {kind!r}")
+
+    def _prepare_kit(self):
+        """Prepare this application's kit (applier/kit.py: which resume, a short
+        summary, a cover letter) during `preparing`. A kit failure NEVER blocks
+        the application, so nothing escapes: without a kit the fillers upload
+        the user's default resume. The profile is offered only to its owner."""
+        try:
+            from applier import kit
+            kit.prepare_kit(self.job, path=self.jobs_db.path, profile=self._owner_profile())
+        except Exception:
+            logger.exception(f"[Session {self.job_id[:8]}] could not prepare the kit; continuing without it")
+
+    def _owner_profile(self) -> dict | None:
+        """The profile summary, but only for the profile's owner (None for anyone else)."""
+        from db.answer_bank_db import PROFILE_OWNER_ID
+        uid = self.job.get("user_id") or PROFILE_OWNER_ID
+        return self.profile_db.summary() if uid == PROFILE_OWNER_ID else None
+
+    def _apply_mode(self) -> str:
+        """"auto" or "assist" for this application (applier/apply_mode.py), by the
+        site type the URL gives - no page is open yet. When in doubt: assist."""
+        try:
+            from applier import apply_mode, autonomy
+            site_type = autonomy.site_type_for(self.job, self.session.site_type)
+            return apply_mode.mode_for(self._settings(), site_type)
+        except Exception:
+            logger.exception(f"[Session {self.job_id[:8]}] could not read the apply mode; using assist")
+            return "assist"
+
+    def _assist_ready(self, emit=None):
+        """ASSIST MODE: no browser, no site contact. Prepare the kit (LLM only),
+        build the answer pack to be sure it can be built, and park the job at
+        ready_for_review for YOU to apply by hand and mark it (applier/assist.py).
+        Autonomy never sees it: nothing is auto-approved and nothing reaches the
+        ledger, because the agent filled nothing."""
+        s = self.session
+        s.iteration = 1
+        self._prepare_kit()
+        fields = 0
+        try:
+            from applier import pack
+            fields = len(pack.build_pack(self.job, path=self.jobs_db.path, profile=self._owner_profile())["fields"])
+        except Exception:
+            logger.exception(f"[Session {self.job_id[:8]}] could not build the answer pack")
+        self._step("assist_ready", f"Assist mode: {fields} fields and your kit are ready - apply on the site "
+                                   "yourself, then mark it applied", {"fields": fields})
+        s.transition(State.REVIEW, "Assist mode — prepared for you to apply by hand")
+        self._stage("ready_for_review", note="assist mode", detail={"assist": True})
+        self._emit(emit, "state", State.REVIEW.value)
+        s.save()
+        return s
+
+    @contextmanager
+    def _resume_file(self):
+        """Yields the path of the resume the form code should upload - the kit's
+        variant (else the user's default), decrypted into a temp file - or None
+        (the single resume.pdf, as before) when there is none or it cannot be
+        read. The temp file lives for the WHOLE pass that fills and submits the
+        form, because the browser reads an uploaded file when the form is sent,
+        and is deleted when the pass ends. A resume that cannot be decrypted is
+        put on the timeline; it never stops the application."""
+        from contextlib import ExitStack
+        from applier import kit
+        path = None
+        with ExitStack() as stack:
+            try:
+                source = kit.resume_for(self.job, self.jobs_db.path)
+                if source is not None:
+                    path = stack.enter_context(source.materialize())
+            except Exception as e:
+                logger.error(f"[Session {self.job_id[:8]}] chosen resume unavailable ({type(e).__name__}); using resume.pdf")
+                self._step("resume_unavailable", "The chosen resume could not be read - using the single resume file instead")
+            yield path
+
     def _adapter(self):
         """The site adapter (applier/adapters) that fills this application, or
         None for the universal filler. Chosen by the detected site type - or what
@@ -490,6 +695,14 @@ class Orchestrator:
         return adapters.adapter_for(autonomy.site_type_for(self.job, s.site_type), self.job.get("url", ""))
 
     def _run_pass(self, name: str, page, profile, *args, **kw) -> dict:
+        """Run pass `name` with the kit's resume decrypted for the pass (see
+        _resume_file), through _dispatch."""
+        with self._resume_file() as resume:
+            if resume is not None:
+                kw = {**kw, "resume_path": resume}
+            return self._dispatch(name, page, profile, args, kw)
+
+    def _dispatch(self, name: str, page, profile, args: tuple, kw: dict) -> dict:
         """Run pass `name` (run_application | run_iteration2 | run_submit) with the
         adapter for this application if there is one, else the universal filler.
 

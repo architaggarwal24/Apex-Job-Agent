@@ -108,6 +108,28 @@ def validate_base_url(url: str) -> str:
     return url.rstrip("/")
 
 
+_HOSTNAME = re.compile(r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$")
+
+
+def validate_smtp_host(host: str) -> str:
+    """The same protection for an SMTP server's host name (Settings > Notifications): this
+    server opens a connection there and logs in with a password. A bare host name or IP
+    literal only - no scheme, port, path or credentials - and never a cloud metadata /
+    link-local address, in any numeric spelling. Loopback and private-LAN relays are allowed.
+    Returns it lower-cased, or raises ValueError with a message safe to show."""
+    host = (host or "").strip()
+    if not host:
+        raise ValueError("Enter the SMTP server's host name, e.g. smtp.example.com")
+    bare = host[1:-1] if host.startswith("[") and host.endswith("]") else host     # [::1]
+    bare = bare.lower().rstrip(".")
+    ip = _as_ip(bare)
+    if bare in _BLOCKED_HOSTS or (ip is not None and _is_blocked_ip(ip)):
+        raise ValueError("That address is a cloud metadata / link-local address and is not allowed")
+    if ip is None and not _HOSTNAME.match(bare):         # also refuses a scheme, port, path, "@" or spaces
+        raise ValueError("Enter only the SMTP host name (no scheme, port, path or credentials), e.g. smtp.example.com")
+    return bare
+
+
 def is_local_url(url: str) -> bool:
     """True for loopback / private-network / localhost targets — used to decide
     whether an API key is expected (a local model server usually needs none)."""

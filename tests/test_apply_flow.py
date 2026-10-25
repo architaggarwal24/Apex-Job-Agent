@@ -377,6 +377,13 @@ class ClassificationIntegrationTests(Base):
 # ── step events ───────────────────────────────────────────────────
 
 class StepEventTests(Base):
+    def setUp(self):
+        super().setUp()
+        # these tests are about the steps the FORM CODE emits; the application kit (tests/test_kits.py) has its own
+        kit = mock.patch("applier.kit.prepare_kit", return_value=None)
+        kit.start()
+        self.addCleanup(kit.stop)
+
     def emit_script(self, page, job, profile, emit):
         emit("log", "Opening application")
         emit("step", {"step": "opened_page", "message": "Opened the job page"})

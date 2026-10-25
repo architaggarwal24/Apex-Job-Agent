@@ -3,15 +3,18 @@ server/routes/settings.py — Settings API + page route.
 """
 
 import asyncio
+import json
 import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
+from applier import apply_mode, executors
 from core.auth import require_owner
 from core.urlcheck import validate_base_url
+from db import hunt
 from db.settings_db import (
-    SettingsDB, PROVIDERS, looks_like_placeholder, normalize_model_id,
+    DEFAULT_PROVIDER, SettingsDB, PROVIDERS, is_secret_key, looks_like_placeholder, normalize_model_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,7 +36,7 @@ async def get_settings():
     data = db.read_all()
     masked = {}
     for k, v in data.items():
-        if "api_key" in k and v:
+        if is_secret_key(k) and v:
             masked[k] = "••••••••" + v[-4:] if len(v) > 4 else "••••"
         else:
             masked[k] = v
@@ -57,7 +60,7 @@ async def get_setting_raw(key: str):
     CORS would let any origin exfiltrate API keys. Non-secret settings
     can be read via GET /api/settings instead.
     """
-    if "api_key" in key:
+    if is_secret_key(key):
         raise HTTPException(403, "API key values cannot be read back via this endpoint")
     val = SettingsDB.get().read(key, "")
     return JSONResponse({"key": key, "value": val})
@@ -67,7 +70,7 @@ async def get_setting_raw(key: str):
 # validate them (an unchecked base URL or a hand-written provider list would
 # bypass the SSRF check).
 _MANAGED_KEYS = ("custom_providers", "queue_paused")      # the latter: /api/queue/pause|resume
-_MANAGED_PREFIXES = ("extra_models_",)
+_MANAGED_PREFIXES = ("extra_models_", "notify_")          # the latter: /api/notifications/settings
 
 
 @router.post("/api/settings")
@@ -77,10 +80,12 @@ async def save_settings(data: dict, _owner: int = Depends(require_owner)):
     for key, value in data.items():
         if key in _MANAGED_KEYS or key.startswith(_MANAGED_PREFIXES):
             raise HTTPException(400, f"'{key}' is managed through its own endpoint")
+        if key == "apply_mode_overrides" and isinstance(value, dict):
+            value = json.dumps(value)                  # an object is fine; it is stored as JSON text
         if not isinstance(value, (str, int, float, bool)):
             raise HTTPException(400, f"Invalid value for '{key}'")
         value = str(value)
-        if "api_key" in key:
+        if is_secret_key(key):
             if value == "" or value.startswith("••••"):
                 continue                      # blank / still-masked = "leave it alone"
             if looks_like_placeholder(value):
@@ -98,6 +103,26 @@ async def save_settings(data: dict, _owner: int = Depends(require_owner)):
             value = value.strip().lower()
             if value not in ("true", "false"):
                 raise HTTPException(400, "quality_first must be true or false")
+        if key == "apply_mode":
+            try:
+                value = apply_mode.clean_mode(value)
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        if key == "executor":
+            try:
+                value = executors.clean_mode(value)
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        if key == "apply_mode_overrides":
+            try:
+                value = apply_mode.dump_overrides(apply_mode.parse_overrides(value))
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        if key in hunt.STALE_KEYS.values():
+            try:
+                value = hunt.clean_stale_days(key, value)
+            except ValueError as e:
+                raise HTTPException(400, str(e))
         if key == "min_salary_lpa":
             value = value.strip()
             try:
@@ -207,7 +232,7 @@ class ProbeIn(BaseModel):
 
 def _candidate_config(body: ProbeIn) -> dict:
     db  = SettingsDB.get()
-    pid = (body.provider or db.read("llm_provider", "mistral")).lower().strip()
+    pid = (body.provider or db.read("llm_provider", DEFAULT_PROVIDER)).lower().strip()
     if not db.known_provider(pid):
         raise HTTPException(404, "Unknown provider")
     cfg = db.llm_config(pid)

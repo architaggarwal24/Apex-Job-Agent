@@ -18,8 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from cryptography.fernet import Fernet
 
-_ENV_KEYS = ["MISTRAL_API_KEY", "NVIDIA_NIM_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY",
-             "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "LLM_PROVIDER", "MISTRAL_MODEL", "NVIDIA_NIM_MODEL",
+_ENV_KEYS = ["NVIDIA_NIM_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY",
+             "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "LLM_PROVIDER", "NVIDIA_NIM_MODEL",
              "OPENROUTER_MODEL", "GEMINI_MODEL", "OLLAMA_MODEL", "OLLAMA_BASE_URL", "ANTHROPIC_MODEL",
              "OPENAI_MODEL", "LLM_TEMPERATURE"]
 
@@ -54,18 +54,18 @@ class ProviderTestBase(unittest.TestCase):
 
 
 class PlaceholderKeyTests(ProviderTestBase):
-    extra_env = {"MISTRAL_API_KEY": "your_mistral_key_here",       # what .env.example ships
+    extra_env = {"NVIDIA_NIM_API_KEY": "your_nvidia_key_here",     # what .env.example ships
                  "GEMINI_API_KEY": "your_gemini_key_here",
                  "OPENAI_API_KEY": "sk-proj-RealLookingKey123"}
 
     def test_env_placeholders_are_not_imported_but_real_keys_are(self):
-        self.assertEqual(self.db.read("mistral_api_key"), "")
+        self.assertEqual(self.db.read("nvidia_api_key"), "")
         self.assertEqual(self.db.read("gemini_api_key"), "")
         self.assertEqual(self.db.read("openai_api_key"), "sk-proj-RealLookingKey123")
         self.assertTrue(self.raw("openai_api_key").startswith("enc:"))
 
     def test_providers_with_only_a_placeholder_are_not_reported_configured(self):
-        self.assertFalse(self.db.is_configured("mistral"))
+        self.assertFalse(self.db.is_configured("nvidia"))
         self.assertFalse(self.db.is_configured("gemini"))
         self.assertTrue(self.db.is_configured("openai"))
         self.assertTrue(self.db.is_configured("ollama"))        # needs no key
@@ -159,17 +159,17 @@ class CustomProviderTests(ProviderTestBase):
         self.assertEqual(self.db.list_custom_providers(), [])
         for key in ("custom_codecraft-api_api_key", "custom_codecraft-api_model", f"extra_models_{p['id']}"):
             self.assertIsNone(self.raw(key), key)
-        self.assertEqual(self.db.read("llm_provider"), "mistral")
-        self.assertEqual(self.db.llm_config()["provider"], "mistral")
+        self.assertEqual(self.db.read("llm_provider"), "nvidia")
+        self.assertEqual(self.db.llm_config()["provider"], "nvidia")
         with self.assertRaises(LookupError):
             self.db.delete_custom_provider(p["id"])
 
     def test_active_provider_that_no_longer_exists_falls_back_honestly(self):
         self.db.write("llm_provider", "custom-ghost")
         c = self.db.llm_config()
-        self.assertEqual(c["provider"], "mistral")             # label matches the config actually used
+        self.assertEqual(c["provider"], "nvidia")              # label matches the config actually used
         self.db.write("llm_provider", "totally-unknown")
-        self.assertEqual(self.db.llm_config()["provider"], "mistral")
+        self.assertEqual(self.db.llm_config()["provider"], "nvidia")
 
     def test_provider_count_is_capped(self):
         import db.settings_db as m
@@ -232,11 +232,67 @@ class ExtraModelTests(ProviderTestBase):
         self.assertEqual(self.db.all_providers()[p["id"]]["extra_models"], ["some/model:free"])
 
 
+class MistralRemovedTests(ProviderTestBase):
+    """Mistral is no longer a provider: not offered, not the default, not a fallback, and an
+    existing database is cleaned up when it is opened."""
+
+    def test_it_is_not_offered_and_nvidia_is_the_default(self):
+        import db.settings_db as m
+        self.assertNotIn("mistral", m.PROVIDERS)
+        self.assertNotIn("mistral", self.db.all_providers())
+        self.assertEqual(m.DEFAULT_PROVIDER, "nvidia")
+        self.assertEqual(self.db.read("llm_provider"), "nvidia")
+        self.assertEqual(self.db.llm_config()["provider"], "nvidia")
+        self.assertFalse(self.db.known_provider("mistral"))
+
+    def test_it_has_no_settings_rows_on_a_fresh_database(self):
+        self.assertIsNone(self.raw("mistral_api_key"))
+        self.assertIsNone(self.raw("mistral_model"))
+
+    def test_choosing_it_anyway_falls_back_to_the_default_not_to_a_crash(self):
+        self.db.write("llm_provider", "mistral")
+        self.assertEqual(self.db.llm_config()["provider"], "nvidia")
+        self.assertEqual(self.db.llm_config("mistral")["provider"], "nvidia")
+
+    def test_an_existing_database_loses_its_mistral_rows_and_a_mistral_choice(self):
+        from db.settings_db import SettingsDB
+        with self.db._conn() as c:
+            c.execute("INSERT INTO settings (key, value, category, label, updated_at) VALUES "
+                      "('mistral_api_key', 'enc:old', 'llm_keys', 'Mistral API Key', 'x'), "
+                      "('mistral_model', 'mistral-medium-latest', 'llm_keys', 'Mistral Model', 'x')")
+            c.execute("UPDATE settings SET value='mistral' WHERE key='llm_provider'")
+        reopened = SettingsDB(path=self.path)
+        self.assertIsNone(self.raw("mistral_api_key"))
+        self.assertIsNone(self.raw("mistral_model"))
+        self.assertEqual(reopened.read("llm_provider"), "nvidia")
+        self.assertNotIn("mistral_api_key", reopened.read_all())
+
+    def test_other_providers_choice_is_left_alone(self):
+        from db.settings_db import SettingsDB
+        self.db.write("llm_provider", "openai")
+        SettingsDB(path=self.path)
+        self.assertEqual(self.db.read("llm_provider"), "openai")
+
+    def test_the_env_fallback_has_no_mistral_either(self):
+        from core import llm
+        from core.config import cfg
+        self.assertFalse(hasattr(cfg, "MISTRAL_API_KEY"))
+        with mock.patch.object(cfg, "LLM_PROVIDER", "mistral"):
+            self.assertEqual(llm._settings_from_env()["provider"], "nvidia")
+        with mock.patch.object(cfg, "LLM_PROVIDER", "openai"):
+            self.assertEqual(llm._settings_from_env()["provider"], "openai")
+
+    def test_the_env_example_does_not_mention_it(self):
+        text = (Path(__file__).resolve().parent.parent / ".env.example").read_text(encoding="utf-8").lower()
+        self.assertNotIn("mistral", text)
+        self.assertIn("llm_provider=nvidia", text)
+
+
 class AllProvidersShapeTests(ProviderTestBase):
     def test_shape(self):
         p = self.db.add_custom_provider("Groq", "https://api.groq.com/openai/v1", api_key="gsk_abc")
         allp = self.db.all_providers()
-        for pid in ("mistral", "nvidia", "openrouter", "gemini", "ollama", "anthropic", "openai"):
+        for pid in ("nvidia", "openrouter", "gemini", "ollama", "anthropic", "openai"):
             self.assertFalse(allp[pid]["custom"], pid)
             self.assertIn("models", allp[pid]); self.assertIn("extra_models", allp[pid])
             self.assertIsInstance(allp[pid]["configured"], bool)

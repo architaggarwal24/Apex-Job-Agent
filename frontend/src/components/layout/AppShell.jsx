@@ -11,13 +11,12 @@ import Login from '@/components/auth/Login'
 
 // Order matters — this is the sidebar order. `legacy` items are still served
 // by the FastAPI backend (see lib/backend.js), so they're plain anchors
-// rather than client-side <Link>s.
+// rather than client-side <Link>s. Applications replaces the old Jobs page and
+// the backend's Apply and Pipeline pages.
 const NAV = [
   { href: '/', label: 'Dashboard' },
   { href: '/profile', label: 'Profile' },
-  { href: '/jobs', label: 'Jobs' },
-  { href: '/apply', label: 'Apply', legacy: true },
-  { href: '/tracking', label: 'Pipeline', legacy: true },
+  { href: '/applications', label: 'Applications' },
   { href: '/settings', label: 'Settings' },
 ]
 

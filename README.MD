@@ -59,7 +59,6 @@ Supports multiple providers:
 * OpenAI
 * Anthropic Claude
 * Gemini
-* Mistral
 * OpenRouter
 * Ollama
 * NVIDIA NIM

@@ -2,6 +2,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import { backendUrl } from '@/lib/backend'
 
@@ -12,6 +13,7 @@ const badgeClass = s => ({ done: 'b-done', awaiting_input: 'b-wait', screenshot_
   filling: 'b-fill', refilling: 'b-fill', failed: 'b-fail' }[s] || 'b-idle')
 
 export default function Dashboard() {
+  const router = useRouter()
   const [stats, setStats] = useState(null)
   const [status, setStatus] = useState(null)
   const [sessions, setSessions] = useState([])
@@ -58,7 +60,7 @@ export default function Dashboard() {
       {awaiting > 0 && (
         <div className="alert">
           ⚠️ <b>{awaiting}</b> application{awaiting > 1 ? 's' : ''} waiting on a question only you can answer —
-          <a href={backendUrl('/apply')} style={{ color: 'var(--acc2)', marginLeft: 4 }}>review in Apply →</a>
+          <Link href="/applications?needs_you=1" style={{ color: 'var(--acc2)', marginLeft: 4 }}>answer in Applications →</Link>
         </div>
       )}
 
@@ -72,15 +74,15 @@ export default function Dashboard() {
       </div>
 
       <div className="actions">
-        <Link className="card action" href="/jobs" style={{ textDecoration: 'none' }}>
+        <Link className="card action" href="/applications" style={{ textDecoration: 'none' }}>
           <div className="ic">🔍</div><div><div className="t">Search Jobs</div><div className="d">Scrape LinkedIn, Indeed & Naukri, score with AI</div></div>
         </Link>
-        <a className="card action" href={backendUrl('/apply')} style={{ textDecoration: 'none' }}>
+        <Link className="card action" href="/applications?stage=found,queued" style={{ textDecoration: 'none' }}>
           <div className="ic">📄</div><div><div className="t">Apply to Jobs</div><div className="d">Universal form filler — any URL</div></div>
-        </a>
-        <a className="card action" href={backendUrl('/tracking')} style={{ textDecoration: 'none' }}>
+        </Link>
+        <Link className="card action" href="/applications?stage=submitted,recruiter_screen,technical_round,hiring_manager,offer,rejected,withdrawn" style={{ textDecoration: 'none' }}>
           <div className="ic">📊</div><div><div className="t">Pipeline Board</div><div className="d">Track application stages</div></div>
-        </a>
+        </Link>
         <Link className="card action" href="/profile" style={{ textDecoration: 'none' }}>
           <div className="ic">👤</div><div><div className="t">Edit Profile</div><div className="d">Update data used in form filling</div></div>
         </Link>
@@ -112,7 +114,7 @@ export default function Dashboard() {
           <table>
             <thead><tr><th>Job</th><th>Company</th><th>AI Score</th><th>Status</th><th>Updated</th></tr></thead>
             <tbody>{sessions.slice(0, 10).map(s => (
-              <tr key={s.job_id}>
+              <tr key={s.job_id} onClick={() => router.push(`/applications?job=${encodeURIComponent(s.job_id)}`)}>
                 <td className="t">{s.job_title}</td>
                 <td className="m">{s.company}</td>
                 <td className="m">—</td>

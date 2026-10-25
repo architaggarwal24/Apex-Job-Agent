@@ -29,8 +29,10 @@ Always be honest — if the candidate is underqualified, acknowledge it and
 suggest how to position themselves. Keep responses concise and actionable."""
 
 
-def build_context(job: dict, profile: dict, jobs_db=None) -> str:
-    """Build the full context string passed to every chat message."""
+def build_context(job: dict, profile: dict, jobs_db=None, resume_text: str = "") -> str:
+    """Build the full context string passed to every chat message. `resume_text`
+    (optional) is the text of the resume variant being sent, so what is written
+    agrees with it."""
     flat = profile.get("_flat", {})
     skills = profile.get("skills", [])
 
@@ -63,18 +65,21 @@ LinkedIn: {flat.get('linkedin_url','')}
 GitHub:   {flat.get('github_url','')}
 Portfolio: {flat.get('portfolio_url','')}"""
 
+    if resume_text.strip():
+        ctx += f"\n\n=== RESUME BEING SENT ===\n{resume_text.strip()[:3000]}"
     return ctx.strip()
 
 
 def cover_letter(job: dict, profile: dict, jobs_db=None,
-                 tone: str = "professional") -> str:
+                 tone: str = "professional", resume_text: str = "") -> str:
     """
     Generate a tailored cover letter for this job.
 
     Args:
         tone: "professional" | "enthusiastic" | "concise"
+        resume_text: the text of the resume variant being sent (optional)
     """
-    ctx = build_context(job, profile, jobs_db)
+    ctx = build_context(job, profile, jobs_db, resume_text)
     tone_guide = {
         "professional": "formal and professional tone",
         "enthusiastic": "warm, enthusiastic, and personable tone",
@@ -92,6 +97,27 @@ def cover_letter(job: dict, profile: dict, jobs_db=None,
         return result
     except Exception as e:
         logger.error(f"[Ghostwriter] Cover letter failed: {e}")
+        return ""
+
+
+def tailored_summary(job: dict, profile: dict, jobs_db=None, resume_text: str = "") -> str:
+    """
+    A professional summary of the candidate written for THIS job: three
+    sentences, no more. Returns "" if the LLM fails (like cover_letter()).
+    """
+    ctx = build_context(job, profile, jobs_db, resume_text)
+    try:
+        result = LLM.chat(
+            messages=[{"role": "user", "content":
+                "Write a professional summary of this candidate, tailored to this job, in exactly "
+                "three sentences. Use only facts from the context; do not invent experience. "
+                "Reply with the three sentences only - no heading, no bullet points."}],
+            system=SYSTEM + f"\n\nCONTEXT:\n{ctx}",
+            max_tokens=300,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"[Ghostwriter] Tailored summary failed: {e}")
         return ""
 
 

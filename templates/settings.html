@@ -244,7 +244,7 @@ input[type=password]{padding-right:44px}
 // ── State ─────────────────────────────────────────────────────────────────────
 let providers   = {};    // from /api/settings/providers
 let settings    = {};    // from /api/settings
-let activeProvider = 'mistral';
+let activeProvider = 'nvidia';
 let selectedModel  = '';
 let customModel    = '';
 
@@ -257,7 +257,7 @@ async function init() {
   providers = pr;
   settings  = sr.settings || {};
 
-  activeProvider = settings.llm_provider || 'mistral';
+  activeProvider = settings.llm_provider || 'nvidia';
   document.getElementById('temp-range').value = settings.llm_temperature || '0.1';
   document.getElementById('temp-val').textContent  = settings.llm_temperature || '0.1';
 
@@ -284,7 +284,7 @@ function showSection(name, el) {
 // ── Provider grid ─────────────────────────────────────────────────────────────
 function buildProviderGrid() {
   const icons = {
-    mistral:    '🟠', nvidia:   '🟢', openrouter: '🟣',
+    nvidia:   '🟢', openrouter: '🟣',
     gemini:     '🔵', ollama:   '💻', anthropic:  '🟤', openai: '⚫',
   };
   const free = { ollama: true, openrouter: true };

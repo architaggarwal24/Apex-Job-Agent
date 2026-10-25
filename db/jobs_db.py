@@ -8,7 +8,11 @@ Tables:
   job_stages         — Legacy (pre-lifecycle) pipeline history; read only by
                        the migration, never written any more
   job_notes          — Per-job notes from the user
+  follow_ups         — Reminders (with drafts) to check in / say thanks / ask for
+                       news; see db/follow_ups_db.py. Never sends anything.
   job_briefs         — LLM-generated job brief + tailored resume summary
+  prep_artifacts     — interview / offer prep per card, and the offers you
+                       enter; see db/prep_db.py
 
 Lifecycle: jobs.stage is the single source of truth and JobsDB.transition()
 the only writer of it. jobs.status is kept as a DERIVED, read-only
@@ -38,7 +42,8 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 from core.config import cfg
-from db import lifecycle
+from db import follow_ups_db, hunt, lifecycle, prep_db
+from db.review_db import REVIEW_DDL
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +82,31 @@ def _insert_event(c, *, user_id, job_id: str, at: str, kind: str,
     return cur.lastrowid
 
 
+# Called after a stage change has COMMITTED, as fn(path, user_id, event). Background
+# reactions to a stage change (the prep generator, notifications) register here when the
+# app starts (main.py); a listener that raises is logged and ignored - it can never undo
+# or fail the stage change, which is already stored.
+_STAGE_LISTENERS: list = []
+
+
+def add_stage_listener(fn) -> None:
+    if fn not in _STAGE_LISTENERS:
+        _STAGE_LISTENERS.append(fn)
+
+
+def remove_stage_listener(fn) -> None:
+    if fn in _STAGE_LISTENERS:
+        _STAGE_LISTENERS.remove(fn)
+
+
+def _notify_listeners(path, user_id, event: dict) -> None:
+    for fn in list(_STAGE_LISTENERS):
+        try:
+            fn(path, user_id, event)
+        except Exception as e:
+            logger.warning("[JobsDB] stage listener failed: %s", type(e).__name__)
+
+
 def _like(text: str) -> str:
     """Substring pattern for LIKE ... ESCAPE '\\', with the user's % and _ literal."""
     t = text.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -100,9 +130,15 @@ def _event_dict(r) -> dict:
 
 
 class JobsDB:
-    def __init__(self, path: Path | None = None, user_id: int | None = None):
+    def __init__(self, path: Path | None = None, user_id: int | None = None, *,
+                 clock=None, stale_days=None):
+        """`clock()` -> now (default datetime.now); `stale_days()` -> the limits
+        db/hunt.stale_thresholds returns (default: read from the settings). Both exist
+        so the hunt's day-counting can be tested without waiting."""
         self.path    = path or cfg.JOBS_DB_PATH
         self.user_id = user_id
+        self._clock  = clock or datetime.now
+        self._stale_days = stale_days or hunt.stale_thresholds
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
@@ -220,6 +256,11 @@ class JobsDB:
                 ("stage",           "TEXT DEFAULT NULL"),
                 ("stage_entered_at", "TEXT DEFAULT ''"),
                 ("blocked_reason",  "TEXT DEFAULT ''"),
+                ("next_step_text",  "TEXT DEFAULT ''"),
+                ("next_step_at",    "TEXT DEFAULT ''"),
+                ("contact_name",    "TEXT DEFAULT ''"),
+                ("contact_email",   "TEXT DEFAULT ''"),
+                ("last_contact_at", "TEXT DEFAULT ''"),
             ]:
                 try:
                     c.execute(f"ALTER TABLE jobs ADD COLUMN {col[0]} {col[1]}")
@@ -243,6 +284,10 @@ class JobsDB:
                 c.execute("UPDATE jobs SET user_id=1 WHERE user_id IS NULL")
                 c.execute("UPDATE application_events SET user_id=1 "
                           "WHERE user_id IS NULL")
+
+            c.execute(REVIEW_DDL)                  # review packets live here and go with their job
+            follow_ups_db.ensure_schema(c, self._clock())
+            prep_db.ensure_schema(c)
 
     def _migrate_lifecycle(self, c):
         """Give every pre-lifecycle row a stage. Idempotent: only rows whose
@@ -428,7 +473,8 @@ class JobsDB:
         body_json = json.dumps(body, ensure_ascii=False)      # fail before touching the DB
         shot = Path(screenshot).name if screenshot else ""
         new_reason = reason or ""
-        now = datetime.now().isoformat()
+        now_dt = self._clock()
+        now = now_dt.isoformat()
 
         and_sql, and_p = self._and()
         with self._conn() as c:
@@ -455,8 +501,13 @@ class JobsDB:
             eid = _insert_event(c, user_id=row["user_id"], job_id=job_id, at=now,
                                 kind="transition", from_stage=frm, to_stage=to,
                                 actor=actor, detail=body_json, screenshot=shot)
-            return _event_dict(c.execute(
+            follow_ups_db.on_transition(c, user_id=row["user_id"], job_id=job_id,
+                                        frm=frm, to=to, now=now_dt)
+            prep_db.on_transition(c, user_id=row["user_id"], job_id=job_id, to=to, now=now_dt)
+            event = _event_dict(c.execute(
                 "SELECT * FROM application_events WHERE id=?", (eid,)).fetchone())
+        _notify_listeners(self.path, row["user_id"], event)
+        return event
 
     def update_status(self, job_id: str, status: str, error: str = "",
                       actor: str = "system"):
@@ -520,6 +571,28 @@ class JobsDB:
                 INSERT INTO job_notes (job_id, note, created_at) VALUES (?, ?, ?)
             """, (job_id, note, datetime.now().isoformat()))
 
+    def set_hunt(self, job_id: str, changes: dict) -> dict:
+        """Change some of the five hunt fields (db/hunt.py) of a job this view owns, and
+        keep the follow-ups in step (a new next_step_at schedules its nudge, a changed or
+        cleared one takes back the old). Returns the application as get_application does.
+        LookupError: not this view's job. ValueError: a field is invalid; nothing is written."""
+        clean = hunt.clean_hunt(changes)
+        now = self._clock()
+        and_sql, and_p = self._and()
+        with self._conn() as c:
+            row = c.execute("SELECT user_id, next_step_at FROM jobs WHERE job_id=?" + and_sql,
+                            (job_id,) + and_p).fetchone()
+            if row is None:
+                raise LookupError("Job not found")
+            # the column names come from hunt.HUNT_FIELDS (clean_hunt refuses any other), never from the caller
+            sets = ", ".join(f"{k}=?" for k in clean)
+            c.execute(f"UPDATE jobs SET {sets}, updated_at=? WHERE job_id=?" + and_sql,
+                      tuple(clean.values()) + (now.isoformat(), job_id) + and_p)
+            if "next_step_at" in clean:
+                follow_ups_db.sync_next_step(c, user_id=row["user_id"], job_id=job_id,
+                                             old=row["next_step_at"] or "", new=clean["next_step_at"], now=now)
+        return self.get_application(job_id)
+
     def purge_duplicates(self) -> int:
         # GROUP BY includes user_id so "duplicate" means duplicate
         # *within one user's jobs* — two users each having the same
@@ -531,6 +604,9 @@ class JobsDB:
         with self._conn() as c:
             c.execute(f"DELETE FROM application_events WHERE job_id IN ({dupes})",
                       and_p)
+            c.execute(f"DELETE FROM follow_ups WHERE job_id IN ({dupes})", and_p)
+            c.execute(f"DELETE FROM review_packets WHERE job_id IN ({dupes})", and_p)
+            c.execute(f"DELETE FROM prep_artifacts WHERE job_id IN ({dupes})", and_p)
             r = c.execute("""
                 DELETE FROM jobs WHERE id NOT IN (
                     SELECT MAX(id) FROM jobs GROUP BY user_id, title_co_key, source
@@ -557,7 +633,8 @@ class JobsDB:
                 # then the jobs themselves.
                 mine = "SELECT job_id FROM jobs" + where_sql
                 for child in ("job_stages", "job_notes", "job_briefs",
-                              "application_events"):
+                              "application_events", "follow_ups", "review_packets",
+                              "prep_artifacts"):
                     c.execute(f"DELETE FROM {child} WHERE job_id IN ({mine})", where_p)
                 r = c.execute("DELETE FROM jobs" + where_sql, where_p)
             else:
@@ -565,6 +642,9 @@ class JobsDB:
                           "WHERE status NOT IN ('applied','in_progress')" + and_sql)
                 c.execute(f"DELETE FROM application_events WHERE job_id IN ({doomed})",
                           and_p)
+                c.execute(f"DELETE FROM follow_ups WHERE job_id IN ({doomed})", and_p)
+                c.execute(f"DELETE FROM review_packets WHERE job_id IN ({doomed})", and_p)
+                c.execute(f"DELETE FROM prep_artifacts WHERE job_id IN ({doomed})", and_p)
                 r = c.execute(
                     "DELETE FROM jobs WHERE status NOT IN ('applied','in_progress')"
                     + and_sql, and_p)
@@ -646,6 +726,7 @@ class JobsDB:
             d["notes"] = [dict(n) for n in c.execute(
                 "SELECT * FROM job_notes WHERE job_id=? ORDER BY created_at DESC",
                 (job_id,)).fetchall()]
+            d.update(hunt.derive(d["stage"], d["stage_entered_at"], self._clock(), self._stale_days()))
             return d
 
     def get_all(self, limit: int = 1000, status: str = "") -> list[dict]:
@@ -849,7 +930,8 @@ class JobsDB:
 
     _APP_COLS = ("job_id, title, company, location, url, source, salary, ai_score, "
                  "stage, stage_entered_at, blocked_reason, error_message, "
-                 "found_at, applied_at, updated_at")
+                 "found_at, applied_at, updated_at, "
+                 "next_step_text, next_step_at, contact_name, contact_email, last_contact_at")
 
     def list_applications(self, stage: str = "", source: str = "", title: str = "",
                           q: str = "", limit: int = 500) -> list[dict]:
@@ -880,7 +962,11 @@ class JobsDB:
                + (" WHERE " + " AND ".join(where) if where else "")
                + " ORDER BY stage_entered_at DESC, id DESC LIMIT ?")
         with self._conn() as c:
-            return [dict(r) for r in c.execute(sql, tuple(params) + (limit,)).fetchall()]
+            rows = [dict(r) for r in c.execute(sql, tuple(params) + (limit,)).fetchall()]
+        now, limits = self._clock(), self._stale_days()
+        for d in rows:
+            d.update(hunt.derive(d["stage"], d["stage_entered_at"], now, limits))
+        return rows
 
     def get_application(self, job_id: str) -> dict | None:
         """One application with its full event timeline (oldest first), or
@@ -893,6 +979,7 @@ class JobsDB:
             if r is None:
                 return None
             d = dict(r)
+            d.update(hunt.derive(d["stage"], d["stage_entered_at"], self._clock(), self._stale_days()))
             d["events"] = [_event_dict(e) for e in c.execute(
                 "SELECT * FROM application_events WHERE job_id=?" + and_sql
                 + " ORDER BY id", (job_id,) + and_p).fetchall()]

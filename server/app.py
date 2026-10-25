@@ -112,17 +112,26 @@ def create_app(ui_dir: Path | None = DEFAULT_UI_DIR) -> FastAPI:
     from server.routes.apply       import router as apply_router
     from server.routes.tracking    import router as track_router
     from server.routes.applications import router as apps_router
+    from server.routes.review      import router as review_router
     from server.routes.queue       import router as queue_router
     from server.routes.answer_bank import router as bank_router
     from server.routes.autonomy    import router as autonomy_router
+    from server.routes.kits        import router as kits_router
+    from server.routes.assist      import router as assist_router
+    from server.routes.follow_ups  import router as follow_ups_router
+    from server.routes.prep        import router as prep_router
+    from server.routes.analytics   import router as analytics_router
+    from server.routes.notifications import router as notifications_router
+    from server.routes.runner      import router as runner_router
+    from server.routes.runner_tokens import router as runner_tokens_router
     from server.routes.ghostwriter import router as gw_router
     from server.routes.settings    import router as settings_router
     from server.routes.auth        import router as auth_router
     from server.websocket          import router as ws_router
 
     for r in [auth_router, on_router, jobs_router, apply_router,
-              track_router, apps_router, queue_router, bank_router, autonomy_router,
-              gw_router, settings_router, ws_router]:
+              track_router, apps_router, review_router, queue_router, bank_router, autonomy_router,
+              kits_router, assist_router, follow_ups_router, prep_router, analytics_router, notifications_router, runner_router, runner_tokens_router, gw_router, settings_router, ws_router]:
         app.include_router(r)
 
     served = _install_ui(app, ui_dir)      # must come after the routers (catch-all mount)

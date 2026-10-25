@@ -83,20 +83,21 @@ def _snapshot(analysis: FormAnalysis, hits: list[dict], only_keys=None) -> list[
     return U._snapshot(FormAnalysis(page_url=analysis.page_url, job_id=analysis.job_id, fields=keep), hits, 0)
 
 
-def _fill_and_report(adapter: Adapter, page, analysis: FormAnalysis, emit):
-    filled, failed = adapter.fill(page, analysis.fields, cfg.RESUME_PATH)
+def _fill_and_report(adapter: Adapter, page, analysis: FormAnalysis, emit, resume_path=None):
+    filled, failed = adapter.fill(page, analysis.fields, resume_path or cfg.RESUME_PATH)
     U._report_filled(emit, filled, failed)
     return filled, failed
 
 
-def run_application(adapter: Adapter, page, job: dict, profile: dict, emit=None, answers=None) -> dict:
+def run_application(adapter: Adapter, page, job: dict, profile: dict, emit=None, answers=None,
+                    resume_path=None) -> dict:
     """First pass: open the form, fill it, screenshot it. See universal.run_application."""
     failure = _open(adapter, page, job, emit)
     if failure:
         return failure
     U._report_page(page, emit, 0)
     analysis, hits = _read(adapter, page, job, profile, answers, emit)
-    _fill_and_report(adapter, page, analysis, emit)
+    _fill_and_report(adapter, page, analysis, emit, resume_path)
 
     screenshots = []
     shot = U._screenshot(page, job["job_id"], "pre_submit")
@@ -108,7 +109,7 @@ def run_application(adapter: Adapter, page, job: dict, profile: dict, emit=None,
 
 
 def run_iteration2(adapter: Adapter, page, job: dict, profile: dict, missing_keys: list[str],
-                   emit=None, answers=None) -> dict:
+                   emit=None, answers=None, resume_path=None) -> dict:
     """You have answered the questions the first pass stopped on. The form is
     opened afresh, so everything is filled again (a complete form to screenshot);
     only the answered questions go into the review snapshot, which is folded
@@ -118,7 +119,7 @@ def run_iteration2(adapter: Adapter, page, job: dict, profile: dict, missing_key
         return failure
     U._report_page(page, emit, 0)
     analysis, hits = _read(adapter, page, job, profile, answers, emit)
-    _fill_and_report(adapter, page, analysis, emit)
+    _fill_and_report(adapter, page, analysis, emit, resume_path)
 
     screenshots = []
     shot = U._screenshot(page, job["job_id"], "pre_submit_final")
@@ -130,7 +131,7 @@ def run_iteration2(adapter: Adapter, page, job: dict, profile: dict, missing_key
 
 
 def run_submit(adapter: Adapter, page, job: dict, profile: dict, corrections=None, emit=None,
-               dry_run: bool = False, answers=None) -> dict:
+               dry_run: bool = False, answers=None, resume_path=None) -> dict:
     """Open, fill and submit. With dry_run the form is filled and the submit
     button only looked for, never clicked. See universal.run_submit."""
     failure = _open(adapter, page, job, emit, again=True)
@@ -138,7 +139,7 @@ def run_submit(adapter: Adapter, page, job: dict, profile: dict, corrections=Non
         return failure
     U._report_page(page, emit, 0)
     analysis, _ = _read(adapter, page, job, profile, answers, emit)
-    _fill_and_report(adapter, page, analysis, emit)
+    _fill_and_report(adapter, page, analysis, emit, resume_path)
 
     screenshots = []
     if dry_run:

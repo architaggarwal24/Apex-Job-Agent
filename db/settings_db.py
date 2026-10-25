@@ -37,6 +37,16 @@ _PLACEHOLDER_RE = re.compile(
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9_@][A-Za-z0-9_.:/@+\-]{0,199}$")
 
 
+# Which settings are SECRETS: encrypted at rest (core/crypto.py), masked by GET /api/settings and
+# never readable through /api/settings/raw. Every API key ("..._api_key"), and any key ending in
+# _token or _password (the notification channels' bot token and SMTP password).
+SECRET_SUFFIXES = ("_token", "_password")
+
+
+def is_secret_key(key: str) -> bool:
+    return "api_key" in key or key.endswith(SECRET_SUFFIXES)
+
+
 def looks_like_placeholder(value: str) -> bool:
     v = (value or "").strip()
     return bool(v) and bool(_PLACEHOLDER_RE.match(v))
@@ -58,28 +68,17 @@ def slugify(label: str) -> str:
 #
 # Model lists refreshed Sept 2026 against each provider's live docs/pricing
 # pages (see PR notes). Confidence varies by provider — Anthropic and the
-# OpenRouter Claude slug are ground-truth verified; OpenAI/Mistral/NVIDIA
+# OpenRouter Claude slug are ground-truth verified; OpenAI/NVIDIA
 # NIM are cross-checked against current pricing/catalog pages; Gemini's
 # generation numbering was churning fast in 2026 across sources, so the
 # safer, more-corroborated IDs were chosen over bleeding-edge ones; Ollama
 # local tags are the least verifiable from web docs (they depend on what's
 # in the local registry) — if a pull fails, check https://ollama.com/library
 # for the exact current tag.
+# The provider used when none is chosen, or the chosen one no longer exists.
+DEFAULT_PROVIDER = "nvidia"
+
 PROVIDERS = {
-    "mistral": {
-        "label":    "Mistral AI",
-        "url":      "https://console.mistral.ai",
-        "models":   [
-            "mistral-large-latest",   # Mistral Large 3 (Dec 2025 release)
-            "mistral-medium-latest",  # Medium 3.5 — ~95% of Large's quality, 1/4 the cost
-            "mistral-small-latest",   # Small 4 (Mar 2026)
-            "ministral-8b-latest",    # tiny/cheap, replaces deprecated open-mistral-7b
-        ],
-        "key_label": "API Key",
-        "key_env":   "MISTRAL_API_KEY",
-        "model_env": "MISTRAL_MODEL",
-        "base_url":  "https://api.mistral.ai/v1",
-    },
     "nvidia": {
         "label":    "NVIDIA NIM",
         "url":      "https://integrate.api.nvidia.com",
@@ -176,11 +175,9 @@ PROVIDERS = {
 DEFAULT_SETTINGS = [
     # (key, default_value, category, label)
     # LLM
-    ("llm_provider",     "mistral",  "llm",     "Active Provider"),
+    ("llm_provider",     DEFAULT_PROVIDER, "llm", "Active Provider"),
     ("llm_temperature",  "0.1",      "llm",     "Temperature"),
     # Per-provider keys & models
-    ("mistral_api_key",      "",                       "llm_keys", "Mistral API Key"),
-    ("mistral_model",        "mistral-medium-latest",  "llm_keys", "Mistral Model"),
     ("nvidia_api_key",       "",                       "llm_keys", "NVIDIA NIM API Key"),
     ("nvidia_model",         "deepseek-ai/deepseek-v3.2", "llm_keys", "NVIDIA Model"),
     ("nvidia_base_url",      "https://integrate.api.nvidia.com/v1", "llm_keys", "NVIDIA Base URL"),
@@ -208,6 +205,12 @@ DEFAULT_SETTINGS = [
     ("min_salary_lpa",             "0",     "agent", "Min Salary (LPA)"),
     ("min_delay_between_applies",  "45",    "agent", "Min Delay Between Applies (s)"),
     ("max_delay_between_applies",  "120",   "agent", "Max Delay Between Applies (s)"),
+    ("apply_mode",                 "auto",   "agent", "Apply Mode (auto | assist)"),
+    ("executor",                   "server", "agent", "Executor (server | runner | auto)"),
+    ("apply_mode_overrides",       '{"indeed_apply":"assist","linkedin_easy_apply":"assist"}', "agent", "Apply Mode per Site Type"),
+    ("stale_days_submitted",       "7",    "agent", "Stale After (days): Submitted"),
+    ("stale_days_recruiter_screen", "5",   "agent", "Stale After (days): Recruiter Screen"),
+    ("stale_days_other",           "7",    "agent", "Stale After (days): Any Other Stage"),
 ]
 
 
@@ -264,6 +267,10 @@ class SettingsDB:
             # Migrate from .env if keys exist there but not in DB
             self._migrate_from_env(c)
             self._clear_placeholder_keys(c)
+            # Mistral is no longer a provider: drop its two settings so they stop showing in Settings,
+            # and if it was the active one, move to the default.
+            c.execute("DELETE FROM settings WHERE key IN ('mistral_api_key', 'mistral_model')")
+            c.execute("UPDATE settings SET value=? WHERE key='llm_provider' AND value='mistral'", (DEFAULT_PROVIDER,))
 
     def _clear_placeholder_keys(self, conn):
         """Repair: earlier versions imported .env.example's placeholder text
@@ -281,8 +288,6 @@ class SettingsDB:
         """One-time: import existing .env API keys into settings DB."""
         import os
         env_map = {
-            "MISTRAL_API_KEY":    "mistral_api_key",
-            "MISTRAL_MODEL":      "mistral_model",
             "NVIDIA_NIM_API_KEY": "nvidia_api_key",
             "NVIDIA_NIM_MODEL":   "nvidia_model",
             "OPENROUTER_API_KEY": "openrouter_api_key",
@@ -320,11 +325,11 @@ class SettingsDB:
 
     @staticmethod
     def _maybe_decrypt(key: str, value: str) -> str:
-        """API keys are stored encrypted (see write()) — decrypt them
-        transparently on the way out so every existing caller (llm_config,
-        the settings page, etc.) keeps seeing plaintext without needing to
-        know encryption is happening underneath."""
-        if "api_key" in key:
+        """Secrets (is_secret_key: API keys, *_token, *_password) are stored
+        encrypted (see write()) — decrypt them transparently on the way out so
+        every existing caller (llm_config, the settings page, etc.) keeps seeing
+        plaintext without needing to know encryption is happening underneath."""
+        if is_secret_key(key):
             from core.crypto import decrypt
             return decrypt(value)
         return value
@@ -359,15 +364,9 @@ class SettingsDB:
         explicit provider is what lets the Settings screen test or list models
         for the card you're looking at without switching the app over to it."""
         s        = self.read_all()
-        provider = (provider or s.get("llm_provider", "mistral")).lower().strip()
+        provider = (provider or s.get("llm_provider", DEFAULT_PROVIDER)).lower().strip()
 
         configs = {
-            "mistral": {
-                "type":     "openai_compat",
-                "api_key":  s.get("mistral_api_key", ""),
-                "model":    s.get("mistral_model", "mistral-medium-latest"),
-                "base_url": "https://api.mistral.ai/v1",
-            },
             "nvidia": {
                 "type":     "openai_compat",
                 "api_key":  s.get("nvidia_api_key", ""),
@@ -424,12 +423,12 @@ class SettingsDB:
                     "label":    entry["label"],
                     "temperature": temperature,
                 }
-            logger.warning(f"[Settings] Active provider {provider!r} no longer exists — using mistral")
-            provider = "mistral"
+            logger.warning(f"[Settings] Active provider {provider!r} no longer exists — using {DEFAULT_PROVIDER}")
+            provider = DEFAULT_PROVIDER
 
         if provider not in configs:
-            logger.warning(f"[Settings] Unknown provider {provider!r} — using mistral")
-            provider = "mistral"
+            logger.warning(f"[Settings] Unknown provider {provider!r} — using {DEFAULT_PROVIDER}")
+            provider = DEFAULT_PROVIDER
         cfg_data = dict(configs[provider])
         if looks_like_placeholder(cfg_data.get("api_key", "")):
             cfg_data["api_key"] = ""
@@ -525,7 +524,7 @@ class SettingsDB:
                       (f"custom_{slug}_api_key", f"custom_{slug}_model", f"extra_models_{pid}"))
         # If it was the active provider, don't leave the app pointing at nothing.
         if self.read("llm_provider", "") == pid:
-            self.write("llm_provider", "mistral")
+            self.write("llm_provider", DEFAULT_PROVIDER)
         self._invalidate_llm_cache()
 
     # ── User-added model names, for any provider ───────────────────
@@ -603,7 +602,7 @@ class SettingsDB:
 
     def write(self, key: str, value: str):
         now = datetime.now().isoformat()
-        if "api_key" in key and value:
+        if is_secret_key(key) and value:
             from core.crypto import encrypt
             value = encrypt(value)
         with self._conn() as c:

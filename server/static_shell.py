@@ -15,6 +15,7 @@ export doesn't contain — /apply, /tracking, /screenshots, /docs — stays
 protected by default.
 """
 
+import re
 from pathlib import Path
 
 # Always public: the auth endpoints themselves, the legacy static dir, and
@@ -22,10 +23,26 @@ from pathlib import Path
 PUBLIC_EXACT    = {"/login", "/favicon.ico"}
 PUBLIC_PREFIXES = ("/api/auth/", "/static/")
 
+# The runner endpoints (server/routes/runner.py) are public to the SESSION gate
+# because a runner has no session: it proves itself with a bearer token that each
+# of those routes checks itself (server/routes/runner.py require_runner,
+# core/runner_auth.py). That makes this the one
+# deliberate hole in the gate, so it is as small as it can be: EXACTLY these
+# paths and nothing that merely starts with /api/runner/ - a task id is 32 hex
+# characters, no dot-segments, no trailing anything. A new runner endpoint must be
+# added here on purpose. (Token management for the owner lives elsewhere, under
+# /api/settings/runner-tokens, behind the normal session gate.)
+RUNNER_PATH = re.compile(r"/api/runner/(?:claim|[0-9a-f]{32}/(?:events|screenshot|result|resume))")
+
+
+def is_runner_path(path: str) -> bool:
+    return RUNNER_PATH.fullmatch(path) is not None
+
+
 # The pages the Next app owns. Only used for the DEV redirect (when there is no
 # build to serve, the backend sends these to the Next dev server). Production
 # doesn't depend on this list — it goes by which files exist in the export.
-SHELL_ROUTES = ("/", "/jobs", "/profile", "/settings")
+SHELL_ROUTES = ("/", "/jobs", "/applications", "/profile", "/settings")
 
 
 def normalize(path: str) -> str:
@@ -58,7 +75,7 @@ def resolve_static_file(ui_dir: Path, url_path: str) -> Path | None:
 
 
 def is_public_path(path: str, ui_dir: Path | None) -> bool:
-    if path in PUBLIC_EXACT or path.startswith(PUBLIC_PREFIXES):
+    if path in PUBLIC_EXACT or path.startswith(PUBLIC_PREFIXES) or is_runner_path(path):
         return True
     if normalize(path) in SHELL_ROUTES:
         return True

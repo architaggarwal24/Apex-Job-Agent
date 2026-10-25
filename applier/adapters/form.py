@@ -326,6 +326,9 @@ class FormAdapter(Adapter):
 
     @staticmethod
     def _upload_for(f, resume_path: Path | None) -> Path | None:
+        """What to upload for a file field: the resume (resume_path - the kit's
+        chosen variant, decrypted by the Orchestrator for this pass - else
+        resume.pdf), the cover letter file, or None."""
         if f.field_key == "resume_file":
             path = resume_path or cfg.RESUME_PATH
         elif f.field_key == "cover_letter_file":

@@ -363,7 +363,7 @@ class HttpAuthTests(unittest.TestCase):
 
         d = c.delete(f"/api/settings/custom-providers/{pid}")
         self.assertEqual(d.status_code, 200)
-        self.assertEqual(d.json()["provider_info"]["provider"], "mistral", "active provider not reset")
+        self.assertEqual(d.json()["provider_info"]["provider"], "nvidia", "active provider not reset")
         self.assertNotIn(pid, c.get("/api/settings/providers").json())
         self.assertEqual(c.delete(f"/api/settings/custom-providers/{pid}").status_code, 404)
 

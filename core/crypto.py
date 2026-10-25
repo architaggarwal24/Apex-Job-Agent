@@ -2,7 +2,8 @@
 core/crypto.py — Application-level encryption at rest.
 
 Encrypts secrets that would otherwise sit as plaintext on disk: LLM
-provider API keys (in settings.db) and saved login-session cookies
+provider API keys and the notification channels' *_token / *_password
+settings (in settings.db; which keys is db/settings_db.is_secret_key) and saved login-session cookies
 (data/cookies/*.json). This protects against someone reading the SQLite
 file, a cookie JSON, or a backup of either directly — a stolen laptop,
 a misconfigured file share, a leaked backup, a static-file route with a

@@ -44,7 +44,6 @@ def _settings_from_env() -> dict:
     from core.config import cfg
     p = cfg.LLM_PROVIDER
     configs = {
-        "mistral":    {"type":"openai_compat","api_key":cfg.MISTRAL_API_KEY,   "model":cfg.MISTRAL_MODEL,   "base_url":"https://api.mistral.ai/v1",              "provider":"mistral",    "temperature":cfg.LLM_TEMPERATURE},
         "nvidia":     {"type":"openai_compat","api_key":cfg.NVIDIA_API_KEY,    "model":cfg.NVIDIA_MODEL,    "base_url":cfg.NVIDIA_BASE_URL,                      "provider":"nvidia",     "temperature":cfg.LLM_TEMPERATURE},
         "openrouter": {"type":"openai_compat","api_key":cfg.OPENROUTER_API_KEY,"model":cfg.OPENROUTER_MODEL,"base_url":cfg.OPENROUTER_BASE_URL,                  "provider":"openrouter", "temperature":cfg.LLM_TEMPERATURE},
         "gemini":     {"type":"gemini",       "api_key":cfg.GEMINI_API_KEY,    "model":cfg.GEMINI_MODEL,    "base_url":None,                                     "provider":"gemini",     "temperature":cfg.LLM_TEMPERATURE},
@@ -52,7 +51,7 @@ def _settings_from_env() -> dict:
         "anthropic":  {"type":"anthropic",    "api_key":cfg.ANTHROPIC_API_KEY, "model":cfg.ANTHROPIC_MODEL, "base_url":None,                                     "provider":"anthropic",  "temperature":cfg.LLM_TEMPERATURE},
         "openai":     {"type":"openai_compat","api_key":cfg.OPENAI_API_KEY,    "model":cfg.OPENAI_MODEL,    "base_url":cfg.OPENAI_BASE_URL,                      "provider":"openai",     "temperature":cfg.LLM_TEMPERATURE},
     }
-    return configs.get(p, configs["mistral"])
+    return configs.get(p, configs["nvidia"])
 
 
 def provider_info() -> dict:

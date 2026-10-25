@@ -5,7 +5,8 @@ move one between stages, and stream stage changes live.
 
 Everything is per-user: each handler builds JobsDB(user_id=uid) from the
 session, so a job or event belonging to someone else is simply not found.
-The id in the paths is the job_id.
+The id in the paths is the job_id. PUT .../hunt edits the card's hunt fields
+(next step, contact, last contact; db/hunt.py).
 """
 
 import logging
@@ -65,6 +66,20 @@ async def transition_application(job_id: str, data: dict,
     except ValueError as e:
         raise HTTPException(400, str(e))
     return JSONResponse(db.get_application(job_id))
+
+
+@router.put("/api/applications/{job_id}/hunt")
+async def set_hunt(job_id: str, data: dict, uid: int = Depends(get_current_user_id)):
+    """Body: any of next_step_text, next_step_at, contact_name, contact_email,
+    last_contact_at (db/hunt.py); "" or null clears one, fields left out are unchanged.
+    Returns the application. 400 a bad field, 404 not yours. Setting next_step_at also
+    schedules its follow-up nudge."""
+    try:
+        return JSONResponse(JobsDB(user_id=uid).set_hunt(job_id, data))
+    except LookupError:
+        raise HTTPException(404, "Application not found")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.get("/api/events/stream")
