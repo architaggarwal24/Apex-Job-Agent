@@ -33,12 +33,28 @@ URLs redirect to Applications or Today (`server/static_shell.py`).
 ## Layout
 
 ```
-src/app/            routes — page.jsx (Today), applications/, insights/, profile/, settings/
-src/components/     layout/AppShell (auth, sidebar, theme), auth/Login
-src/lib/            api.js (fetch wrapper), theme.js, backend.js
-next.config.mjs     dev proxy vs. static export, chosen by build phase
+src/app/                  routes: page.jsx (Today), applications/, insights/, profile/, settings/
+src/components/
+  layout/AppShell         auth gate, sidebar, theme
+  auth/Login              sign-in / first-run account creation
+  applications/           Workspace (board, list, review queue), SidePanel, and its tabs
+                          (Hunt, Apply, Prep), ReviewPanel, Ghostwriter, Analytics
+  settings/               General, Providers, Sessions, Agent, Automation tabs, plus the answer
+                          bank, autonomy, notifications, resumes and runner-token sections
+src/lib/
+  api.js                  fetch wrapper (an expired session reloads into the login view)
+  backend.js              backend origin for the apply WebSocket, which the dev proxy can't carry
+  live.js                 live updates and keyboard shortcuts for the Applications workspace
+  stages.js, filters.js   stage names/labels and the Applications filters (URL form)
+  insights.js, me.js      helpers for Today/Insights, and who is signed in (owner or not)
+  theme.js, prefs.js, presets.js   appearance and provider presets
+next.config.mjs           dev proxy vs. static export, chosen by build phase
 ```
 
 Optional env: `NEXT_PUBLIC_BACKEND_ORIGIN` (dev target for the apply WebSocket,
 default `http://localhost:8000`), `APEX_BACKEND_ORIGIN` (dev proxy target,
 default `http://127.0.0.1:8000`).
+
+## License
+
+Part of [Apex Job Agent](../README.MD), released under the [MIT License](../LICENSE).

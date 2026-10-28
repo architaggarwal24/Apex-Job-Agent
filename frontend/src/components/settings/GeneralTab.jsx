@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { api, send } from '@/lib/api'
 import { THEMES, usePrefs } from '@/lib/theme'
-import { ACCENTS, OPTIONS } from '@/lib/prefs'
+import { OPTIONS } from '@/lib/prefs'
 import ThemePreview from './ThemePreview'
 
 function Segmented({ options, value, onChange }) {
@@ -25,13 +25,13 @@ function Row({ title, hint, children }) {
   )
 }
 
-function Appearance() {
+export function Appearance() {
   const { prefs, setPref, resetPrefs } = usePrefs()
   if (!prefs) return null
   return (
-    <>
-      <div className="card section">
-        <h2>Theme</h2>
+    <div className="card section">
+      <div className="setting-row" style={{ display: 'block' }}>
+        <div className="what" style={{ marginBottom: 'var(--sp2)' }}><b>Theme</b><div className="m">Dark and light are the same design; “Follow system” switches with your OS.</div></div>
         <div className="themes">
           {THEMES.map(t => (
             <button key={t.id} className={`theme ${prefs.theme === t.id ? 'on' : ''}`} onClick={() => setPref('theme', t.id)} aria-pressed={prefs.theme === t.id}>
@@ -40,35 +40,25 @@ function Appearance() {
               <div className="tg">{t.tagline}</div>
             </button>
           ))}
+          <button className={`theme ${prefs.theme === 'system' ? 'on' : ''}`} onClick={() => setPref('theme', 'system')} aria-pressed={prefs.theme === 'system'}>
+            <div className="theme-split" aria-hidden="true"><ThemePreview t={THEMES[0]} /><ThemePreview t={THEMES[1]} /></div>
+            <div className="nm">Follow system</div>
+            <div className="tg">Matches your OS light / dark setting</div>
+          </button>
         </div>
       </div>
-
-      <div className="card section">
-        <h2>Appearance</h2>
-        <Row title="Accent colour" hint="Overrides the theme's accent for buttons, links and highlights.">
-          <div className="row" style={{ gap: 10 }}>
-            <button className={`sw-btn none ${prefs.accent ? '' : 'on'}`} title="Theme default" aria-label="Theme default accent" onClick={() => setPref('accent', null)} />
-            {ACCENTS.map(a => (
-              <button key={a.hex} className={`sw-btn ${prefs.accent === a.hex ? 'on' : ''}`} style={{ background: a.hex }}
-                title={a.name} aria-label={`${a.name} accent`} onClick={() => setPref('accent', a.hex)} />
-            ))}
-          </div>
-        </Row>
-        <Row title="Density" hint="How much breathing room tables, cards and forms get."><Segmented options={OPTIONS.density} value={prefs.density} onChange={v => setPref('density', v)} /></Row>
-        <Row title="Corners" hint="Override the theme's corner rounding."><Segmented options={OPTIONS.radius} value={prefs.radius} onChange={v => setPref('radius', v)} /></Row>
-        <Row title="Text size" hint="Scales text and spacing together."><Segmented options={OPTIONS.size} value={prefs.size} onChange={v => setPref('size', v)} /></Row>
-        <Row title="Motion" hint="“Follow system” respects your OS reduce-motion setting."><Segmented options={OPTIONS.motion} value={prefs.motion} onChange={v => setPref('motion', v)} /></Row>
-        <Row title="Background effects" hint="Gradients and frosted-glass blur. Turn off for a flatter, faster look."><Segmented options={OPTIONS.glow} value={prefs.glow} onChange={v => setPref('glow', v)} /></Row>
-        <div className="row" style={{ marginTop: 16 }}>
-          <button className="btn" onClick={resetPrefs}>Reset appearance options</button>
-          <span className="m">Saved in this browser only. Keeps your chosen theme.</span>
-        </div>
+      <Row title="Density" hint="How much breathing room lists, cards and forms get."><Segmented options={OPTIONS.density} value={prefs.density} onChange={v => setPref('density', v)} /></Row>
+      <Row title="Text size" hint="Scales text and spacing together."><Segmented options={OPTIONS.size} value={prefs.size} onChange={v => setPref('size', v)} /></Row>
+      <Row title="Motion" hint="“Follow system” respects your OS reduce-motion setting."><Segmented options={OPTIONS.motion} value={prefs.motion} onChange={v => setPref('motion', v)} /></Row>
+      <div className="row" style={{ marginTop: 16 }}>
+        <button className="btn" onClick={resetPrefs}>Reset appearance options</button>
+        <span className="m">Saved in this browser only. Keeps your chosen theme.</span>
       </div>
-    </>
+    </div>
   )
 }
 
-function Account() {
+export function Account() {
   const [me, setMe] = useState(null)
   const [f, setF] = useState({ current: '', next: '', again: '' })
   const [msg, setMsg] = useState(null)       // {ok: bool, text}
@@ -95,7 +85,6 @@ function Account() {
 
   return (
     <div className="card section">
-      <h2>Account</h2>
       <Row title="Signed in as"><span className="t">{me?.email || '…'}</span></Row>
       <div className="setting-row" style={{ display: 'block' }}>
         <div className="what" style={{ marginBottom: 12 }}><b>Change password</b>
@@ -118,8 +107,4 @@ function Account() {
       </div>
     </div>
   )
-}
-
-export default function GeneralTab() {
-  return <><Appearance /><Account /></>
 }

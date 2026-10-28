@@ -5,6 +5,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import { SkeletonRows } from '@/components/layout/Skeleton'
 
 function Bars({ rows, label, value }) {
   const max = Math.max(1, ...rows.map(value))
@@ -24,7 +25,7 @@ export default function Analytics({ version }) {
   return (
     <details className="card section an" open={open} onToggle={e => setOpen(e.currentTarget.open)}>
       <summary className="t">Pipeline analytics</summary>
-      {open && !d && <div className="m">Loading…</div>}
+      {open && !d && <SkeletonRows n={4} label="Loading analytics" />}
       {d && <div className="an-grid">
         <div><div className="an-title">Conversion funnel</div><Bars rows={d.funnel} label={r => r.stage} value={r => r.count} /></div>
         <div><div className="an-title">Applications by source</div><Bars rows={d.sources} label={r => r.source || '—'} value={r => r.n} /></div>

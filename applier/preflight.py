@@ -230,7 +230,8 @@ def _open(job, jobs_db, settings, fetch) -> PreflightResult:
         return PreflightResult(False, "job_closed",
                                "Job no longer open: the listing says it is closed",
                                {"how": "listing"})
-    url = job.get("url") or ""
+    from applier.target import apply_url
+    url = apply_url(job)                 # the form is what must still be open
     if not url:
         return PreflightResult()
     status, body = fetch(url)

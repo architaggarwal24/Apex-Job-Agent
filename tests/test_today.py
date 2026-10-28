@@ -90,6 +90,13 @@ class ChecklistRuleTests(unittest.TestCase):
         for junk in ("not json", "[]", json.dumps({"provider": "x"})):
             self.assertFalse(build(settings=FakeSettings(setup_llm_tested=junk))[1]["llm"], junk)
 
+    def test_settings_steps_link_to_their_settings_section(self):
+        hrefs = {i["key"]: i["href"] for i in build()[0]["items"]}
+        self.assertEqual((hrefs["llm"], hrefs["login"]), ("/settings?s=providers", "/settings?s=logins"))
+        sections = (ROOT / "frontend" / "src" / "lib" / "settingsNav.js").read_text(encoding="utf-8")
+        for s in ("providers", "logins"):
+            self.assertIn(f"['{s}', ", sections)      # a section the settings page really has
+
     def test_complete(self):
         s = FakeSettings()
         checklist.mark_llm_tested(s, "p", "m")
@@ -277,6 +284,23 @@ class WiringTests(unittest.TestCase):
         self.assertIn("/insights", SHELL_ROUTES)
         page = ROOT / "frontend" / "src" / "app" / "insights" / "page.jsx"
         self.assertIn("/api/analytics/outcomes", page.read_text(encoding="utf-8"))
+
+    def test_insights_can_group_by_every_dimension_and_hides_small_groups(self):
+        page = (ROOT / "frontend" / "src" / "app" / "insights" / "page.jsx").read_text(encoding="utf-8")
+        switch = page[page.index('role="tablist"'):page.index("</div>", page.index('role="tablist"'))]
+        self.assertIn("DIMENSIONS.map", switch)                     # every dimension the API returns is pickable
+        self.assertIn("d.by[by]", page)
+        group = page[page.index("function Group("):page.index("function Overall(")]
+        warn, rates = group.index("ib-warn"), group.index("RATES.map")
+        self.assertRegex(group, r"small \? <div className=\"ib-warn\"")   # small groups: the warning INSTEAD of rates
+        self.assertLess(warn, rates)
+
+    def test_profile_is_tabbed_by_section(self):
+        page = (ROOT / "frontend" / "src" / "app" / "profile" / "page.jsx").read_text(encoding="utf-8")
+        self.assertIn("params.get('t')", page)                      # the open tab is in the URL
+        self.assertIn('role="tablist"', page)
+        self.assertIn("byCategory[tab].map", page)                 # one section on the page at a time
+        self.assertRegex(page, r"CATEGORY_ORDER\s*=\s*\['personal', 'professional', 'education', 'identity'\]")
 
     def test_sidebar(self):
         shell = (ROOT / "frontend" / "src" / "components" / "layout" / "AppShell.jsx").read_text(encoding="utf-8")

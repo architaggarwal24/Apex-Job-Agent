@@ -731,7 +731,8 @@ def _site_type(page, job: dict) -> str:
         html = page.content()
     except Exception:
         html = ""
-    return detect_site_type(_page_url(page) or job.get("url", ""), html)
+    from applier.target import apply_url
+    return detect_site_type(_page_url(page) or apply_url(job), html)
 
 
 def _validation_message(errors: list[str]) -> str:

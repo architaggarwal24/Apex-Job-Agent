@@ -130,7 +130,8 @@ def _stores(job: dict, path):
 
 def site_type_for(job: dict, detected: str = "") -> str:
     """The site type the page was detected as, else what the URL alone says."""
-    return detected or detect_site_type(job.get("url", ""))
+    from applier.target import apply_url
+    return detected or detect_site_type(apply_url(job))
 
 
 def record_review_reached(job: dict, site_type: str, path=None) -> None:

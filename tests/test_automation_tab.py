@@ -15,7 +15,11 @@ was exercised in a real headless browser against the real API):
 Real SQLite in a temp directory, a fake clock for the runner tokens, no network, no LLM.
 """
 
+import json
 import os
+import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -211,18 +215,70 @@ class PreviewHttpTests(unittest.TestCase):
         self.assertEqual(self.bob.get("/api/settings/runner-tokens").status_code, 403)
 
 
-class WiringTests(unittest.TestCase):
-    def test_settings_page_has_the_automation_tab(self):
-        page = (ROOT / "frontend" / "src" / "app" / "settings" / "page.jsx").read_text(encoding="utf-8")
-        self.assertIn("'Automation'", page)
-        self.assertIn("<AutomationTab", page)
+SRC = ROOT / "frontend" / "src"
 
-    def test_moved_settings_are_edited_in_one_place(self):
-        agent = (ROOT / "frontend" / "src" / "components" / "settings" / "AgentTab.jsx").read_text(encoding="utf-8")
-        auto = (ROOT / "frontend" / "src" / "components" / "settings" / "AutomationTab.jsx").read_text(encoding="utf-8")
-        for key in ("daily_apply_limit", "auto_skip_score_threshold", "company_blacklist", "min_salary_lpa"):
-            self.assertNotIn(f'"{key}"', agent, key)
-            self.assertIn(key, auto, key)
+
+@unittest.skipUnless(shutil.which("node"), "Node.js not installed")
+class SettingsNavTests(unittest.TestCase):
+    """lib/settingsNav.js: five pages of folds, and every old one-section link still lands."""
+
+    @classmethod
+    def setUpClass(cls):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            (tmp / "settingsNav.mjs").write_text((SRC / "lib" / "settingsNav.js").read_text(encoding="utf-8"), encoding="utf-8")
+            (tmp / "check.mjs").write_text((ROOT / "tests" / "fixtures" / "settings_nav_check.mjs").read_text(encoding="utf-8"), encoding="utf-8")
+            r = subprocess.run(["node", str(tmp / "check.mjs")], capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            raise AssertionError(r.stderr[-2000:])
+        cls.out = json.loads(r.stdout)
+
+    def test_five_pages(self):
+        self.assertEqual(self.out["pages"], ["start", "ai", "search", "applying", "you"])
+        folds = [f for fs in self.out["folds"].values() for f in fs]
+        self.assertEqual(len(folds), len(set(folds)), "a fold key belongs to one page")
+
+    def test_old_links_still_land(self):
+        want = {"appearance": ("you", "appearance"), "providers": ("ai", "providers"), "agent": ("applying", "pace"),
+                "keys": ("search", "keys"), "apify": ("search", "keys"), "limits": ("applying", "limits"),
+                "blacklist": ("applying", "skip"), "logins": ("applying", "logins"), "runners": ("applying", "runner"),
+                "notifications": ("you", "notifications")}
+        for k, (page, fold) in want.items():
+            self.assertEqual(self.out["legacy"][k], {"page": page, "fold": fold}, k)
+        for k, r in self.out["legacy"].items():
+            self.assertIn(r["fold"], self.out["folds"][r["page"]], f"{k} lands on a fold that exists")
+
+    def test_resolving(self):
+        o = self.out
+        self.assertEqual(o["page_and_fold"], {"page": "applying", "fold": "pace"})
+        self.assertEqual(o["page_bad_fold"], {"page": "applying", "fold": ""})
+        self.assertEqual((o["nothing"], o["junk"]), ({"page": "start", "fold": ""}, {"page": "start", "fold": ""}))
+        self.assertEqual(o["href"], ["/settings?s=ai", "/settings?s=applying&open=modes"])
+        self.assertEqual(o["places"], 5 + sum(len(f) for f in o["folds"].values()))
+        self.assertEqual(o["place_fold"][1], "Settings › Applying › Where it runs")
+
+
+class WiringTests(unittest.TestCase):
+    def test_every_fold_is_rendered(self):
+        page = (SRC / "app" / "settings" / "page.jsx").read_text(encoding="utf-8")
+        nav = (SRC / "lib" / "settingsNav.js").read_text(encoding="utf-8")
+        folds = re.findall(r"\['([a-z]+)', '[^']+'\]", nav[nav.index("SETTINGS_FOLDS"):nav.index("const LEGACY")])
+        self.assertEqual(sorted(folds), sorted(re.findall(r"case '([a-z]+)':", page)))
+        self.assertIn("resolveSettings(params.get('s'), params.get('open'))", page)   # page and fold are in the URL
+
+    def test_every_settings_part_is_on_the_settings_page(self):
+        page = (SRC / "app" / "settings" / "page.jsx").read_text(encoding="utf-8")
+        for part in ("<QualityCaps", "<ApplyModes", "<Executor", "<PaceAndPractice", "<AiScoring", "<AutonomySection", "<Ledger",
+                     "<AnswerBankSection", "<ResumesSection", "<RunnerTokensSection", "<NotificationsSection", "<Blacklist", "<Boards",
+                     "<SourceList", "<Companies", "<Keys", "<Apify", "<SessionsTab", "<ProvidersTab", "<Appearance", "<Account", "<StartHere"):
+            self.assertIn(part, page, part)
+
+    def test_every_setting_is_edited_in_one_place(self):
+        auto = (SRC / "components" / "settings" / "AutomationTab.jsx").read_text(encoding="utf-8")
+        for key in ("daily_apply_limit", "auto_skip_score_threshold", "company_blacklist", "min_salary_lpa", "dry_run",
+                    "enable_llm_scoring", "min_delay_between_applies", "max_delay_between_applies", "apply_mode", "executor"):
+            self.assertEqual(len(re.findall(rf"useSettingsForm\(settings, \[[^\]]*'{key}'", auto)), 1, key)
+        self.assertFalse((SRC / "components" / "settings" / "AgentTab.jsx").exists(), "the old Agent Behavior tab is gone")
 
     def test_owner_only_parts_are_read_only_for_others(self):
         parts = (ROOT / "frontend" / "src" / "components" / "settings" / "AutomationParts.jsx").read_text(encoding="utf-8")

@@ -189,6 +189,48 @@ def _auto_skip_threshold() -> int:
         return cfg.AUTO_SKIP_SCORE_THRESHOLD
 
 
+def _save_quick_fit(job: dict, profile: dict, jobs_db=None) -> None:
+    from intelligence.fit import quick_fit
+    fit = quick_fit(job, profile)
+    if fit is None:
+        return
+    job["fit_score"], job["fit_reason"] = fit["score"], fit["reason"]
+    if jobs_db and job.get("job_id"):
+        jobs_db.update_fit(job["job_id"], fit["score"], fit["reason"])
+
+
+def prefilter_and_fit(jobs: list[dict], profile: dict, jobs_db=None) -> None:
+    """The no-LLM part of scoring for jobs just saved (the search saves them as they
+    come): the pre-filter (obvious mismatches get their score and are skipped, as in
+    score_jobs_batch) and, for the rest, the instant quick match. Never calls a model."""
+    flat = profile.get("_flat", {})
+    try:
+        exp_f = float(flat.get("experience_years", "0"))
+    except (ValueError, TypeError):
+        exp_f = 0.0
+    for job in jobs:
+        if job.get("ai_score") is not None:
+            continue
+        pre = _heuristic_prefilter(job, exp_f)
+        if pre is None:
+            _save_quick_fit(job, profile, jobs_db)
+            continue
+        job["ai_score"], job["ai_score_reason"], job["auto_skip"] = pre["score"], pre["reason"], pre["auto_skip"]
+        if jobs_db and job.get("job_id"):
+            jobs_db.update_score(job["job_id"], pre["score"], pre["reason"])
+            if pre["auto_skip"]:
+                jobs_db.update_status(job["job_id"], "skipped", error=f"Auto-skip: {pre['reason']}")
+
+
+def quick_fit_inbox(jobs_db, profile: dict) -> list[dict]:
+    """(Re)compute the quick match for every Inbox job of this scoped JobsDB
+    (cheap: no LLM). Returns the Inbox jobs, each with its fit_score."""
+    jobs = jobs_db.inbox_jobs()
+    for job in jobs:
+        _save_quick_fit(job, profile, jobs_db)
+    return jobs
+
+
 def score_jobs_batch(jobs: list[dict], profile: dict,
                      jobs_db=None,
                      cancel_event: threading.Event | None = None,
@@ -200,9 +242,10 @@ def score_jobs_batch(jobs: list[dict], profile: dict,
         — only runs if "enable_llm_scoring" is turned on in Settings
           (default: OFF, to save tokens and time)
 
-    Jobs that pass the pre-filter without LLM scoring are left with
-    ai_score=None (shown as "—" / not yet scored) rather than a fake
-    score, so they remain visible as "found" and ready to apply.
+    Every job that passes the pre-filter gets the instant keyword match
+    (fit_score, intelligence/fit.py). Without LLM scoring its ai_score stays
+    None rather than a fake AI score, so the gates (quality, auto-skip,
+    autonomy) still treat it as not scored, and it stays "found", ready to apply.
 
     Args:
         cancel_event: if set, stops processing remaining jobs ASAP
@@ -243,12 +286,16 @@ def score_jobs_batch(jobs: list[dict], profile: dict,
                                           error=f"Auto-skip: {pre['reason']}")
             results.append(job)
             pre_filtered_count += 1
-        elif llm_enabled:
-            needs_llm.append(job)
         else:
-            # LLM scoring disabled — leave unscored, job stays "found"
-            # and is immediately available to apply to.
-            results.append(job)
+            # Every job that survives gets the instant keyword match, so the
+            # Inbox can be sorted by fit even with AI scoring off.
+            _save_quick_fit(job, profile, jobs_db)
+            if llm_enabled:
+                needs_llm.append(job)
+            else:
+                # LLM scoring disabled — no AI score; the job stays "found"
+                # and is immediately available to apply to.
+                results.append(job)
 
     logger.info(f"[Scorer] Pre-filter: {pre_filtered_count} auto-skipped instantly "
                 f"({len(jobs) - pre_filtered_count - len(needs_llm)} left unscored, "
@@ -313,6 +360,8 @@ def score_jobs_batch(jobs: list[dict], profile: dict,
 
             if emit and completed % 5 == 0:
                 emit("log", f"Scored {completed}/{len(needs_llm)} jobs...")
+            if emit:
+                emit("score_progress", {"done": completed, "total": len(needs_llm)})
     finally:
         if cancelled:
             executor.shutdown(wait=False, cancel_futures=True)

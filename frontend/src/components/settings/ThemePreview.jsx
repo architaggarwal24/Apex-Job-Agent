@@ -1,27 +1,25 @@
 // frontend/src/components/settings/ThemePreview.jsx
 'use client'
 
-// A miniature of the real UI drawn from the theme's own tokens (type, radius,
-// border weight, shadow), so the gallery shows what each theme actually feels
-// like — not just three colour chips.
+// A miniature of the real Applications screen in one variant's colours: sidebar, a few
+// list rows with scores, the detail pane and its primary button.
 export default function ThemePreview({ t }) {
-  const line = (w, c, h = 5) => <div style={{ width: w, height: h, borderRadius: Math.min(t.radius, 3), background: c, opacity: c === t.mut ? 0.7 : 1 }} />
+  const line = (w, c, h = 5) => <div style={{ width: w, height: h, borderRadius: 2, background: c, opacity: c === t.mut ? 0.75 : 1 }} />
   return (
-    <div style={{
-      display: 'flex', height: 92, overflow: 'hidden', border: `${t.bw}px solid ${t.bdr}`, borderRadius: Math.min(t.radius, 14),
-      background: t.mesh ? `${t.mesh}, ${t.bg}` : t.bg, fontFamily: t.font,
-    }}>
-      <div style={{ width: 26, background: t.bg2, borderRight: `${t.bw}px solid ${t.bdr}`, padding: '8px 5px', display: 'grid', alignContent: 'start', gap: 5 }}>
-        {line('100%', t.acc, 4)}{line('100%', t.mut, 4)}{line('100%', t.mut, 4)}
+    <div style={{ display: 'flex', height: 96, overflow: 'hidden', border: `1px solid ${t.bdr}`, borderRadius: 8, background: t.bg }} aria-hidden="true">
+      <div style={{ width: 28, background: t.bg2, borderRight: `1px solid ${t.bdr}`, padding: '8px 6px', display: 'grid', alignContent: 'start', gap: 6 }}>
+        {line('100%', t.txt, 4)}{line('100%', t.mut, 4)}{line('100%', t.mut, 4)}
       </div>
-      <div style={{ flex: 1, padding: 8, display: 'grid', alignContent: 'start', gap: 6 }}>
-        <div style={{ fontFamily: t.head, fontWeight: t.headWeight, fontSize: 11, color: t.txt, lineHeight: 1 }}>Dashboard</div>
-        <div style={{ background: t.panel, border: `${t.bw}px solid ${t.bdr}`, borderRadius: Math.min(t.radius, 10), boxShadow: t.shadow,
-          padding: '6px 7px', display: 'flex', alignItems: 'center', gap: 7 }}>
-          <div style={{ fontFamily: t.head, fontWeight: t.headWeight, fontSize: 17, color: t.txt, lineHeight: 1 }}>Aa</div>
-          <div style={{ display: 'grid', gap: 4, flex: 1 }}>{line('80%', t.mut)}{line('55%', t.mut)}</div>
-          <div style={{ width: 22, height: 11, borderRadius: Math.min(t.radius, 6), background: t.acc, border: `${t.bw}px solid ${t.bdr === t.acc ? t.acc : t.bdr}` }} />
-        </div>
+      <div style={{ flex: 1, display: 'grid', alignContent: 'start' }}>
+        {[86, 74, 51].map((n, i) => (
+          <div key={n} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '7px 8px', borderBottom: `1px solid ${t.bdr}`, background: i === 0 ? t.panel : 'transparent' }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: i === 2 ? t.mut : t.acc, fontFamily: 'var(--font-mono)' }}>{n}</span>
+            <div style={{ display: 'grid', gap: 3, flex: 1 }}>{line('80%', t.txt, 4)}{line('50%', t.mut, 3)}</div>
+          </div>))}
+      </div>
+      <div style={{ width: 54, background: t.panel, borderLeft: `1px solid ${t.bdr}`, padding: 7, display: 'grid', alignContent: 'start', gap: 5 }}>
+        {line('90%', t.txt, 5)}{line('60%', t.mut, 3)}
+        <div style={{ width: 26, height: 10, borderRadius: 3, background: t.acc, marginTop: 2 }} />
       </div>
     </div>
   )

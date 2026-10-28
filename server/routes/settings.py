@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from applier import apply_mode, executors
+from scraper import apify_source, engines
+from scraper import sources as job_sources
 from core.auth import require_owner
 from core.urlcheck import validate_base_url
 from db import hunt
@@ -76,7 +78,7 @@ async def save_settings(data: dict, _owner: int = Depends(require_owner)):
     for key, value in data.items():
         if key in _MANAGED_KEYS or key.startswith(_MANAGED_PREFIXES):
             raise HTTPException(400, f"'{key}' is managed through its own endpoint")
-        if key == "apply_mode_overrides" and isinstance(value, dict):
+        if key in ("apply_mode_overrides", "search_sources") and isinstance(value, dict):
             value = json.dumps(value)                  # an object is fine; it is stored as JSON text
         if not isinstance(value, (str, int, float, bool)):
             raise HTTPException(400, f"Invalid value for '{key}'")
@@ -112,6 +114,31 @@ async def save_settings(data: dict, _owner: int = Depends(require_owner)):
         if key == "apply_mode_overrides":
             try:
                 value = apply_mode.dump_overrides(apply_mode.parse_overrides(value))
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        if key in engines.ENGINE_KEYS.values():
+            try:
+                value = engines.clean_engine(value)
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        if key == "search_results_per_query":
+            try:
+                value = engines.clean_results_per_query(value)
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        if key.startswith("apify_actor_"):
+            try:
+                value = apify_source.clean_actor(value)
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        if key == "search_sources":
+            try:
+                value = job_sources.dump_sources_setting(job_sources.parse_sources_setting(value))
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        if key == "search_hours_old":
+            try:
+                value = engines.clean_hours_old(value)
             except ValueError as e:
                 raise HTTPException(400, str(e))
         if key in hunt.STALE_KEYS.values():

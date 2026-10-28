@@ -291,7 +291,7 @@ class QueueHttpTests(unittest.TestCase):
         r = self.client.post(f"/api/apply/submit/{target}", json={})
         self.assertEqual(r.status_code, 429)
         self.assertIn("10/10", r.json()["detail"])
-        self.assertIn("Quality First", r.json()["detail"])
+        self.assertIn("careful mode in Settings → Applying → How many a day", r.json()["detail"])
         self.assertEqual(self.stage(target), "ready_for_review")
 
 

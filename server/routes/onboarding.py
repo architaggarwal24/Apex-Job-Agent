@@ -70,7 +70,15 @@ async def upload_resume(file: UploadFile = File(...)):
 
 @router.get("/api/profile")
 async def get_profile():
-    return JSONResponse(ProfileDB().get_by_category())
+    """The profile as the page shows it: first/last name are derived from the
+    full name and stay out of the form (they're still in /api/profile/flat). Fields come
+    in the order STANDARD_FIELDS lists them (name, contact, location, links…), others last."""
+    from db.profile_db import DERIVED_NAME_FIELDS, STANDARD_FIELDS
+    order = {k[0]: i for i, k in enumerate(STANDARD_FIELDS)}
+    by_cat = ProfileDB().get_by_category()
+    return JSONResponse({cat: sorted((f for f in fields if f["key"] not in DERIVED_NAME_FIELDS),
+                                     key=lambda f: (order.get(f["key"], len(order)), f["key"]))
+                         for cat, fields in by_cat.items()})
 
 
 @router.get("/api/profile/flat")
@@ -92,10 +100,11 @@ async def update_profile(data: dict):
       - Values must be strings, capped at 10,000 chars (generous for
         a cover letter / resume summary, but bounds worst case).
     """
-    from db.profile_db import STANDARD_FIELDS
+    from db.profile_db import (DERIVED_NAME_FIELDS, PROFILE_URL_PREFIX, STANDARD_FIELDS,
+                               canonical_profile_url, split_full_name)
 
     db = ProfileDB()
-    known_keys = {k for k, *_ in STANDARD_FIELDS} | set(db.get_all().keys())
+    known_keys = ({k for k, *_ in STANDARD_FIELDS} | set(db.get_all().keys())) - set(DERIVED_NAME_FIELDS)
 
     MAX_LEN  = 10_000
     accepted = {}
@@ -111,13 +120,19 @@ async def update_profile(data: dict):
         value = str(value)
         if len(value) > MAX_LEN:
             value = value[:MAX_LEN]
+        if key in PROFILE_URL_PREFIX:
+            value = canonical_profile_url(key, value)
         accepted[key] = value
+
+    updated = len(accepted)
+    if "full_name" in accepted:          # the halves follow the full name, never edited on their own
+        accepted["first_name"], accepted["last_name"] = split_full_name(accepted["full_name"])
 
     if rejected:
         logger.warning(f"[Onboarding] /api/profile rejected unknown/invalid keys: {rejected}")
 
     db.set_many(accepted, source="web_ui")
-    return JSONResponse({"status": "ok", "updated": len(accepted), "rejected": rejected})
+    return JSONResponse({"status": "ok", "updated": updated, "rejected": rejected})
 
 
 # ── Search preferences ────────────────────────────────────────────
@@ -157,6 +172,7 @@ async def setup_checklist(uid: int = Depends(get_current_user_id)):
     from db.jobs_db import JobsDB
     from db.resumes_db import ResumeStore
     from db.settings_db import SettingsDB
+    from scraper import engines
     from server.routes.settings import login_states
     db = ProfileDB()
     _ok, missing = db.is_complete()
@@ -165,7 +181,8 @@ async def setup_checklist(uid: int = Depends(get_current_user_id)):
         settings=SettingsDB.get(), profile_flat=db.get_all(), profile_missing=missing,
         resume_file=cfg.RESUME_PATH.exists(), resume_variants=len(ResumeStore(uid).list()),
         logged_in={k: v.get("status") == "logged_in" for k, v in logins.items()},
-        job_count=len(JobsDB(user_id=uid).job_ids())))
+        job_count=len(JobsDB(user_id=uid).job_ids()),
+        search_needs_login=any(engines.engine_for(b, SettingsDB.get().read) == "browser" for b in engines.BOARDS)))
 
 
 # ── Status ────────────────────────────────────────────────────────

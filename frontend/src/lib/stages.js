@@ -32,3 +32,19 @@ export const REASONS = {
 export const reasonLabel = r => REASONS[r] || (r ? String(r).replace(/_/g, ' ') : '')
 
 export const scoreClass = s => s == null ? '' : s >= 70 ? 'hi' : s >= 40 ? 'mid' : 'lo'
+
+// Where an application is made when the job links out to a company form: the
+// ATS's name for a known host ("greenhouse"), else the bare host.
+const ATS_HOSTS = [
+  ['greenhouse.io', 'greenhouse'], ['lever.co', 'lever'], ['ashbyhq.com', 'ashby'],
+  ['myworkdayjobs.com', 'workday'], ['myworkdaysite.com', 'workday'], ['smartrecruiters.com', 'smartrecruiters'],
+  ['workable.com', 'workable'], ['recruitee.com', 'recruitee'], ['teamtailor.com', 'teamtailor'],
+  ['personio.de', 'personio'], ['personio.com', 'personio'], ['breezy.hr', 'breezy'], ['pinpointhq.com', 'pinpoint'],
+  ['bamboohr.com', 'bamboohr'], ['applytojob.com', 'jazzhr'], ['rippling.com', 'rippling'], ['icims.com', 'icims'],
+]
+export const applyHost = url => {
+  let host = ''
+  try { host = new URL(url).hostname.toLowerCase().replace(/^www\./, '') } catch { return '' }
+  const hit = ATS_HOSTS.find(([h]) => host === h || host.endsWith('.' + h))
+  return hit ? hit[1] : host
+}

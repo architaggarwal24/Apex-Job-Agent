@@ -67,6 +67,12 @@ MAX_REVIEW_FIELDS = 300
 STAGE_FOR_KIND = {"apply": "preparing", "refill": "preparing", "submit": "ready_for_review"}
 
 
+
+def _for_apply(job):
+    """The job as the runner must see it: "url" is the form to apply on."""
+    from applier.target import with_apply_target
+    return with_apply_target(job)
+
 class RunnerError(Exception):
     """Something the runner did wrong; `status` is the HTTP status to answer with."""
     status = 400
@@ -326,7 +332,7 @@ class RunnerHub:
             task = self.tasks.claim(token_id, self.clock())
             if task is None:
                 return None
-            job = self._jobs().get_by_id(task["job_id"])
+            job = _for_apply(self._jobs().get_by_id(task["job_id"]))
             want = STAGE_FOR_KIND[task["kind"]]
             if job is not None and job["stage"] == want:
                 return task
@@ -355,7 +361,7 @@ class RunnerHub:
     def payload(self, task: dict) -> dict:
         from db.answer_bank_db import AnswerBank, normalize_company
         from db.kits_db import KitStore
-        job = self._jobs().get_by_id(task["job_id"])
+        job = _for_apply(self._jobs().get_by_id(task["job_id"]))
         session_answers, site_type = {}, ""
         try:
             from applier.session import ApplicationSession
@@ -391,7 +397,7 @@ class RunnerHub:
     def resume(self, token_id: int, task_id: str) -> tuple[str, bytes]:
         task = self._claimed(task_id, token_id)
         self.tasks.renew(task_id, token_id, self.clock())
-        job = self._jobs().get_by_id(task["job_id"])
+        job = _for_apply(self._jobs().get_by_id(task["job_id"]))
         found = self._resume(job) if job else None
         if found is None:
             raise NotFound("this application has no resume")
@@ -463,7 +469,7 @@ class RunnerHub:
         clean = clean_result(body, task, task["screenshots"])
         if not self.tasks.complete(task_id, token_id, self.clock(), "success" if clean["success"] else "error"):
             raise Conflict("this task is not claimed by you any more")
-        job = self._jobs().get_by_id(task["job_id"])
+        job = _for_apply(self._jobs().get_by_id(task["job_id"]))
         if job is None:
             return {"status": "accepted", "application": "gone"}
         orch = self._orchestrator(job)
@@ -494,7 +500,7 @@ class RunnerHub:
 
     def _apply(self, action: dict):
         task, job_id = action["task"], action["task"]["job_id"]
-        job = self._jobs().get_by_id(job_id)
+        job = _for_apply(self._jobs().get_by_id(job_id))
         if job is None:
             return
         if action["action"] == "requeued":

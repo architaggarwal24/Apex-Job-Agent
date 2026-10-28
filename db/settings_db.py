@@ -211,6 +211,21 @@ DEFAULT_SETTINGS = [
     ("stale_days_submitted",       "7",    "agent", "Stale After (days): Submitted"),
     ("stale_days_recruiter_screen", "5",   "agent", "Stale After (days): Recruiter Screen"),
     ("stale_days_other",           "7",    "agent", "Stale After (days): Any Other Stage"),
+    # Job search: how each board is searched (scraper/engines.py)
+    ("search_engine_linkedin",     "jobspy", "search", "LinkedIn search engine (jobspy | browser)"),
+    ("search_engine_indeed",       "jobspy", "search", "Indeed search engine (jobspy | browser)"),
+    ("search_engine_naukri",       "jobspy", "search", "Naukri search engine (jobspy | browser)"),
+    ("search_results_per_query",   "25",     "search", "Results per title x location, per board"),
+    ("search_hours_old",           "168",    "search", "Only postings newer than (hours, 0 = any age)"),
+    ("search_sources",             "{}",     "search", "Login-free sources on/off (JSON {name: bool}; scraper/sources)"),
+    ("apify_api_token",            "",       "search", "Apify API token (the apify engine)"),
+    ("apify_actor_linkedin",       "bebity~linkedin-jobs-scraper", "search", "Apify actor for LinkedIn"),
+    ("apify_actor_indeed",         "misceres~indeed-scraper",      "search", "Apify actor for Indeed"),
+    ("apify_actor_naukri",         "srd836~naukri-jobs-scraper",   "search", "Apify actor for Naukri"),
+    ("adzuna_app_id",              "",       "search", "Adzuna app id (free key)"),
+    ("adzuna_api_key",             "",       "search", "Adzuna app key (free key)"),
+    ("jsearch_api_key",            "",       "search", "JSearch (RapidAPI) key"),
+    ("himalayas_api_key",          "",       "search", "Himalayas API key (optional)"),
 ]
 
 

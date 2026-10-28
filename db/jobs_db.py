@@ -121,6 +121,16 @@ def _parse_detail(text) -> dict:
     return d if isinstance(d, dict) else {}
 
 
+def _fit(d: dict) -> dict:
+    """The score the UI shows and sorts by: the AI score when there is one,
+    else the quick keyword match, with which one it is."""
+    if d.get("ai_score") is not None:
+        return {"fit": d["ai_score"], "fit_kind": "ai"}
+    if d.get("fit_score") is not None:
+        return {"fit": d["fit_score"], "fit_kind": "quick"}
+    return {"fit": None, "fit_kind": None}
+
+
 def _event_dict(r) -> dict:
     """An application_events row as the API shape. user_id is internal."""
     return {"id": r["id"], "job_id": r["job_id"], "at": r["at"], "kind": r["kind"],
@@ -261,6 +271,10 @@ class JobsDB:
                 ("contact_name",    "TEXT DEFAULT ''"),
                 ("contact_email",   "TEXT DEFAULT ''"),
                 ("last_contact_at", "TEXT DEFAULT ''"),
+                ("apply_url",       "TEXT DEFAULT ''"),     # the form to apply on when it isn't the listing (an ATS link)
+                ("posted_at",       "TEXT DEFAULT ''"),     # when the source says the job was posted (YYYY-MM-DD), if it says
+                ("fit_score",       "INTEGER DEFAULT NULL"),  # the instant keyword match (intelligence/fit.py); never a gate
+                ("fit_reason",      "TEXT DEFAULT ''"),
             ]:
                 try:
                     c.execute(f"ALTER TABLE jobs ADD COLUMN {col[0]} {col[1]}")
@@ -268,6 +282,7 @@ class JobsDB:
                     pass
             c.execute("CREATE INDEX IF NOT EXISTS idx_user ON jobs(user_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_stage ON jobs(user_id, stage)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_apply_url ON jobs(user_id, apply_url)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_events_user "
                       "ON application_events(user_id, id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_events_job "
@@ -400,6 +415,9 @@ class JobsDB:
         job_id    = self._job_id(url)
         url_hash  = self._url_hash(url)
         tc_key    = self._title_co_key(job["title"], job["company"])
+        apply_url = (job.get("apply_url") or "").strip()
+        if apply_url == url:
+            apply_url = ""
         now       = datetime.now().isoformat()
 
         and_sql, and_p = self._and()
@@ -410,19 +428,29 @@ class JobsDB:
             if c.execute("SELECT 1 FROM jobs WHERE title_co_key=? AND source=?" + and_sql,
                          (tc_key, job.get("source","")) + and_p).fetchone():
                 return None
+            # The same opening seen through two sources (a board card and the
+            # company's own ATS page) shares one application form: keep the first.
+            if apply_url and c.execute(
+                    "SELECT 1 FROM jobs WHERE (apply_url=? OR url=?)" + and_sql,
+                    (apply_url, apply_url) + and_p).fetchone():
+                return None
+            if c.execute("SELECT 1 FROM jobs WHERE apply_url=?" + and_sql,
+                         (url,) + and_p).fetchone():
+                return None
             try:
                 c.execute("""
                     INSERT INTO jobs
                         (job_id, url_hash, title_co_key, title, company, location,
                          url, source, description, salary, seniority, applicants,
                          status, stage, stage_entered_at, blocked_reason,
-                         found_at, updated_at, user_id)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'found','found',?,'',?,?,?)
+                         found_at, updated_at, user_id, apply_url, posted_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'found','found',?,'',?,?,?,?,?)
                 """, (job_id, url_hash, tc_key,
                       job["title"], job["company"], job.get("location",""),
                       url, job.get("source",""), job.get("description",""),
                       job.get("salary",""), job.get("seniority",""),
-                      job.get("applicants",""), now, now, now, self.user_id))
+                      job.get("applicants",""), now, now, now, self.user_id,
+                      apply_url, (job.get("posted_at") or "")[:10]))
                 _insert_event(c, user_id=self.user_id, job_id=job_id, at=now,
                               kind="created", from_stage=None, to_stage="found",
                               actor="system")
@@ -530,6 +558,22 @@ class JobsDB:
                 UPDATE jobs SET ai_score=?, ai_score_reason=?, updated_at=?
                 WHERE job_id=?""" + and_sql,
                 (score, reason, datetime.now().isoformat(), job_id) + and_p)
+
+    def update_fit(self, job_id: str, score: int, reason: str):
+        """The quick-match score (intelligence/fit.py). Sorting and display only:
+        the quality gate, auto-skip and autonomy read ai_score."""
+        and_sql, and_p = self._and()
+        with self._conn() as c:
+            c.execute("UPDATE jobs SET fit_score=?, fit_reason=? WHERE job_id=?" + and_sql,
+                      (score, reason, job_id) + and_p)
+
+    def inbox_jobs(self) -> list[dict]:
+        """This view's jobs still in the Inbox (stage found), with what scoring needs."""
+        and_sql, and_p = self._and()
+        with self._conn() as c:
+            return [dict(r) for r in c.execute(
+                "SELECT job_id, title, company, location, description, ai_score, fit_score FROM jobs "
+                "WHERE stage='found'" + and_sql + " ORDER BY id", and_p).fetchall()]
 
     def save_brief(self, job_id: str, brief: str,
                    tailored_summary: str = "", tailored_skills: str = ""):
@@ -928,7 +972,7 @@ class JobsDB:
 
     # ── Applications (the lifecycle view of jobs) + audit trail ───
 
-    _APP_COLS = ("job_id, title, company, location, url, source, salary, ai_score, "
+    _APP_COLS = ("job_id, title, company, location, url, apply_url, posted_at, source, salary, ai_score, fit_score, "
                  "stage, stage_entered_at, blocked_reason, error_message, "
                  "found_at, applied_at, updated_at, "
                  "next_step_text, next_step_at, contact_name, contact_email, last_contact_at")
@@ -966,6 +1010,7 @@ class JobsDB:
         now, limits = self._clock(), self._stale_days()
         for d in rows:
             d.update(hunt.derive(d["stage"], d["stage_entered_at"], now, limits))
+            d.update(_fit(d))
         return rows
 
     def get_application(self, job_id: str) -> dict | None:
@@ -973,13 +1018,14 @@ class JobsDB:
         None if this view doesn't own it."""
         and_sql, and_p = self._and()
         with self._conn() as c:
-            r = c.execute(f"SELECT {self._APP_COLS}, description, ai_score_reason "
+            r = c.execute(f"SELECT {self._APP_COLS}, description, ai_score_reason, fit_reason "
                           "FROM jobs WHERE job_id=?" + and_sql,
                           (job_id,) + and_p).fetchone()
             if r is None:
                 return None
             d = dict(r)
             d.update(hunt.derive(d["stage"], d["stage_entered_at"], self._clock(), self._stale_days()))
+            d.update(_fit(d))
             d["events"] = [_event_dict(e) for e in c.execute(
                 "SELECT * FROM application_events WHERE job_id=?" + and_sql
                 + " ORDER BY id", (job_id,) + and_p).fetchall()]

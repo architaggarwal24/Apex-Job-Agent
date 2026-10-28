@@ -148,7 +148,8 @@ class Orchestrator:
     """
 
     def __init__(self, job: dict):
-        self.job    = job
+        from applier.target import with_apply_target
+        self.job    = with_apply_target(job)      # "url" is the form to apply on (applier/target.py)
         self.job_id = job["job_id"]
 
         from db.profile_db import ProfileDB
@@ -158,7 +159,7 @@ class Orchestrator:
 
         self.session = ApplicationSession.load(self.job_id) or ApplicationSession(
             job_id=    self.job_id,
-            job_url=   job["url"],
+            job_url=   self.job["url"],
             job_title= job["title"],
             company=   job["company"],
             source=    job.get("source", ""),

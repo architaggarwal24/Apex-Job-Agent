@@ -218,9 +218,9 @@ def _enforce_rate_limits():
     if daily_limit > 0:
         applied_today = jobs_db.count_applied_today()
         if applied_today >= daily_limit:
-            hint = ("Turn off Quality First in Settings → Agent Behaviour to use your own limit, "
+            hint = ("Turn off careful mode in Settings → Applying → How many a day to use your own limit, "
                     if quality_first(settings) else
-                    "Increase the limit in Settings → Agent Behaviour, ")
+                    "Increase the limit in Settings → Applying → How many a day, ")
             raise HTTPException(
                 429,
                 f"Daily apply limit reached ({applied_today}/{daily_limit}). "

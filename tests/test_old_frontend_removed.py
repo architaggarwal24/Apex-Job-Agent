@@ -52,7 +52,8 @@ REFERENCES = [
     r"""\bapi\(\s*['"`]/api/jobs(?:\?[^'"`]*)?['"`]\s*\)""",      # a frontend GET of the old list
     r"\b(?:apply|dashboard|jobs|profile|settings|tracking)\.html\b",
     r"\bApp\.jsx\b", r"\bmain\.jsx\b", r"\bvite\b", r"\btheme\.css\b", r"src/pages\b", r"src/api\.js\b",
-    r"frontend/index\.html", r"\bapp/jobs\b", r"def _t\(", r"""["']templates["']""", r"react-router",
+    r"frontend/index\.html", r"(?<![\w.])app/jobs\b", r"def _t\(", r"""["']templates["']""", r"react-router",
+    # app/jobs: the route folder, not himalayas.app/jobs
 ]
 SCANNED = ["frontend/src", "frontend/next.config.mjs", "frontend/README.md", "frontend/package.json",
            "frontend/jsconfig.json", "server", "core", "db", "applier", "runner", "intelligence",

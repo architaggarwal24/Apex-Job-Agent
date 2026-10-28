@@ -1,0 +1,2116 @@
+[
+ {
+  "verdict": "confirmed",
+  "fingerprint": "applier/autonomy.py:consider_auto_approval:daily-cap-ignores-in-flight-runner-submits",
+  "title": "Autonomy auto-submits past the daily apply limit when the runner executor is used",
+  "description": "With executor=runner (or executor=auto while one of the owner's runner tokens was seen recently), the queue worker turns every queued job into a runner apply task in back-to-back steps. A first pass left for a runner returns before the pacing delay (_not_before) is set, and the worker's own daily-cap check (_blocker) counts only jobs already at 'submitted'. The runner hub gives out tasks oldest first, so every apply task finishes before any submit task created later. As each apply result reaches ready_for_review, Orchestrator._after_review calls autonomy.consider_auto_approval. Its cap check compares JobsDB.count_applied_today() with queue_worker.daily_limit(settings). That count includes only jobs whose applied_at was set by the move to 'submitted', so it reads 0 at every check. Every matching job is auto-approved and gets a non-dry-run submit task, and when the hub hands that task out it checks only the job's stage. An independent sandbox run reproduced it: 5 real (non-dry-run) submissions against an effective cap of 2, with 0 autonomy_blocked steps. In a control run where the runner finished each job's apply and submit before the next worker step, the cap held at 2 and the worker returned 'limit'.",
+  "root_cause": "The daily-cap checks in applier/autonomy.py consider_auto_approval (line 220) and QueueWorker._blocker (applier/queue_worker.py:281) both rely on JobsDB.count_applied_today(). That counts only jobs whose applied_at is today, and applied_at is written only on the transition to 'submitted' (db/jobs_db.py:493). Auto-approvals already granted whose real submit is deferred to a runner task are not counted. Runner-deferred first passes skip the pacing delay (applier/queue_worker.py:378), and RunnerHub._claim_valid (applier/runner_hub.py:322) does not re-check the cap before handing out a submit task. So nothing limits in-flight approved submissions.",
+  "intended_behavior": "Autonomy must not approve or send more real (non-dry-run) submissions per day than queue_worker.daily_limit(settings). The applier/autonomy.py docstring makes 'the daily apply limit has room' a precondition for auto-approval. preview_rule (applier/autonomy.py:270) counts the jobs it would approve ahead of a job ('applied_today + taken >= cap'), which shows that approved-but-not-yet-sent submissions are meant to count toward the cap.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "applier/queue_worker.py",
+    "line": 315,
+    "scope": "QueueWorker.step",
+    "description": "The owner-started background queue worker checks the daily cap through _blocker. _blocker counts only submitted jobs (0 while every pass is still with the runner), so the worker claims the next queued job."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/queue_worker.py",
+    "line": 378,
+    "scope": "QueueWorker._run_job",
+    "description": "A first pass left for a runner returns before _not_before is set. The worker claims the next job straight away, so every queued job becomes a runner apply task in consecutive steps."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/executors.py",
+    "line": 109,
+    "scope": "RunnerExecutor.execute",
+    "description": "The pass is queued as a runner task and the Orchestrator returns deferred."
+   },
+   {
+    "kind": "propagation",
+    "file": "db/runner_db.py",
+    "line": 303,
+    "scope": "RunnerTaskStore.claim",
+    "description": "Tasks are handed out oldest first (ORDER BY created_at, rowid), so all apply tasks are claimed before any submit task created later."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/runner_hub.py",
+    "line": 471,
+    "scope": "RunnerHub.result (apply task)",
+    "description": "Each apply result continues through Orchestrator.finish_pass -> _finish_first_pass -> ready_for_review -> _after_review."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/autonomy.py",
+    "line": 220,
+    "scope": "consider_auto_approval",
+    "description": "cap, done = daily_limit(settings), jobs.count_applied_today(). 'done' leaves out approvals whose submit task is still queued, so every job passes the cap check."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/session.py",
+    "line": 749,
+    "scope": "Orchestrator._after_review",
+    "description": "The matched rule triggers self.submit(actor='autonomy'). This queues a runner submit task with dry_run False and does no further limit check."
+   },
+   {
+    "kind": "sink",
+    "file": "applier/runner_hub.py",
+    "line": 471,
+    "scope": "RunnerHub.result (submit task)",
+    "description": "Each submit result goes through Orchestrator._finish_submit and moves the job to 'submitted' with applied_at set, past the configured cap. The real application has been sent in the owner's name."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "applier/autonomy.py",
+    "line": 220,
+    "description": "The autonomy cap check uses count_applied_today(), which counts only jobs whose applied_at is today."
+   },
+   {
+    "file": "db/jobs_db.py",
+    "line": 493,
+    "description": "applied_at is written only on the transition to 'submitted', which happens after the runner reports the submit."
+   },
+   {
+    "file": "applier/autonomy.py",
+    "line": 270,
+    "description": "preview_rule counts the jobs it would approve ahead of this one (applied_today + taken >= cap), so the intended cap includes pending approvals."
+   },
+   {
+    "file": "applier/queue_worker.py",
+    "line": 378,
+    "description": "Runner-deferred passes return before the pacing delay is set, so the worker turns the whole queue into runner tasks before any submit happens."
+   },
+   {
+    "file": "applier/queue_worker.py",
+    "line": 281,
+    "description": "The worker's own cap check also uses count_applied_today() and does not see in-flight runner work."
+   },
+   {
+    "file": "applier/runner_hub.py",
+    "line": 322,
+    "description": "_claim_valid checks only the job's stage (STAGE_FOR_KIND) before handing out a submit task, not the daily cap."
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "authorization_role",
+    "description": "The owner has turned autonomy on (autonomy_enabled) and has at least one enabled rule whose ledger conditions are met and whose max_per_day is above the remaining daily cap."
+   },
+   {
+    "kind": "system_configuration",
+    "description": "executor=runner, or executor=auto while a runner token was seen recently; dry_run is off; the site type is in auto (not assist) apply mode."
+   },
+   {
+    "kind": "data_state",
+    "description": "More queued jobs that pass the quality gate than the daily cap has room for."
+   },
+   {
+    "kind": "timing_dependency",
+    "description": "The worker queues the next apply task right after the previous one is deferred, much faster than a runner can fill a form. So in normal operation all apply tasks exist before any submit task and the FIFO runner finishes them first. If the runner keeps up and finishes apply and submit before the next worker step, the cap holds (control run)."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "No external attacker. The unattended autonomy agent, acting for the owner, exceeds the owner's daily safety cap on irreversible real-world actions (job applications sent in the owner's name). This weakens the LLM-to-action guard that the architecture lists (dry_run, the daily limit, review approval, autonomy rules).",
+   "payloads": [
+    "Settings: executor=runner, quality_first=true, daily_apply_limit=2, auto_skip_score_threshold=30, dry_run=false, min_delay_between_applies=0, max_delay_between_applies=0",
+    "AutonomyStore(1).set_enabled(True); add_rule({site_type:'*', min_score:0, max_per_day:100, min_attempts:1, min_success_rate:0.5, require_all_answers_known:false}); one approved_unchanged greenhouse attempt seeded in the ledger",
+    "5 dummy jobs https://boards.greenhouse.io/acme/jobs/90..94 with ai_score 80, queued via queue_worker.queue_jobs",
+    "Simulated runner: RunnerHub.claim then RunnerHub.result({success:true, review:{fields:[], url:'https://x.invalid/apply'}}) until no task is left"
+   ],
+   "instructions": [
+    "Copy the source into the sandbox scratch (work/src, made writable) and run /mnt/work/v01_cap.py inside sbx.sh with APP_ENCRYPTION_KEY (a fresh Fernet key) and a dummy APP_SECRET_KEY of 40+ characters. Run each scenario in its own process: 'python3 /mnt/work/v01_cap.py Cap.test_a_queue_drained_first' and 'python3 /mnt/work/v01_cap.py Cap.test_b_control_interleaved'. The harness subclasses tests/test_runner.HubBase (temp DBs, urlopen and Playwright patched to fail) and patches applier.kit.prepare_kit to a no-op, so no LLM or network is used.",
+    "Scenario A: call QueueWorker(1).step() 6 times, then let the simulated runner claim and report every task in FIFO order. Scenario B (control): after each worker step, let the runner drain all tasks before the next step.",
+    "Compare the number of jobs at stage 'submitted', and the autonomy_approved / autonomy_blocked step counts, with queue_worker.daily_limit(settings).",
+    "Evidence (promotion allowlist): work/evidence/v01_autonomy_runner_cap_a.json and work/evidence/v01_autonomy_runner_cap_b.json."
+   ],
+   "observed_result": "Scenario A: effective_daily_limit=2; worker outcomes processed x5 then idle; runner log shows apply x5 (applied_today 0 before and after each), then submit x5 (applied_today 0->1->2->3->4->5); all 5 jobs reached 'submitted'; autonomy_approved_steps=5, autonomy_blocked_steps=0, count_applied_today=5. Scenario B control: worker outcomes processed, processed, limit x4; 2 submitted, 3 still queued, count_applied_today=2. The cap holds only when no submits are in flight."
+  },
+  "remediation": {
+   "strategy": "Count approved-but-not-yet-sent real submissions toward the cap. In consider_auto_approval, add today's open non-dry-run submit tasks (or auto_approved attempts not yet submitted) to count_applied_today() before comparing with the cap. Apply the same accounting in QueueWorker._blocker. Re-check the cap in RunnerHub._claim_valid before handing out a non-dry-run submit task, and hold or cancel it if the cap is reached. Optionally apply the pacing delay to runner-deferred passes too.",
+   "code_changes": [
+    {
+     "file_name": "applier/autonomy.py",
+     "fixed_code": "        if not dry_run:\n            from db.runner_db import RunnerTaskStore\n            in_flight = RunnerTaskStore(owner_of(job), path).count_open(kind=\"submit\")\n            cap, done = daily_limit(settings), jobs.count_applied_today() + in_flight\n            if cap > 0 and done >= cap:\n                ...  # record autonomy_blocked and return None as today"
+    },
+    {
+     "file_name": "db/runner_db.py",
+     "fixed_code": "    def count_open(self, kind: str | None = None) -> int:\n        sql = \"SELECT COUNT(*) n FROM runner_tasks WHERE user_id=? AND status IN ('queued','claimed')\"\n        args = [self.user_id]\n        if kind:\n            sql += \" AND kind=?\"; args.append(kind)\n        with self._conn() as c:\n            return c.execute(sql, args).fetchone()[\"n\"]"
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "low",
+    "reason": "The owner must have turned on autonomy with a rule whose max_per_day is above the daily cap, chosen the runner executor, turned dry_run off, and have more eligible queued jobs than the remaining cap. With those settings it happens in normal operation, with no attacker involved."
+   },
+   "impact": {
+    "score": "medium",
+    "reason": "Irreversible real job applications are sent in the owner's name beyond the configured safety cap (5 against 2 in the reproduction; in general the whole eligible queue, bounded only by the rule's max_per_day). This weakens the main limit on unattended LLM-driven submissions and the anti-ban pacing on job sites. Only the owner's own account is affected."
+   },
+   "overall_severity": "low"
+  },
+  "confidence": {
+   "score": "high",
+   "reason": "Every trace line was re-read in source. An independent sandbox harness using the real QueueWorker, Orchestrator, autonomy and RunnerHub code reproduced 5 submissions against a cap of 2, and a control run showed the cap holding when no submits were in flight. That isolates the uncounted in-flight runner submits as the cause."
+  }
+ },
+ {
+  "verdict": "confirmed",
+  "fingerprint": "applier/runner_hub.py:RunnerHub.claim:nan-wait-unbounded-long-poll-survives-token-revocation",
+  "title": "A runner claim with wait=NaN never times out, spins the shared jobs DB, and still delivers a task after the token is revoked",
+  "description": "POST /api/runner/claim takes a 'wait' value from the client. RunnerHub.claim clamps it with min(max(float(wait), 0.0), 25.0), but float('nan') gets through that clamp unchanged, so the deadline and the remaining time are both NaN. The exit check 'remaining <= 0' is never true. _wait(min(NaN, 1.0)) calls threading.Condition.wait(NaN). Because 'NaN > 0' is false, Condition.wait takes the non-blocking acquire path and returns at once. The long poll becomes a busy loop with no time limit: about 3,000 sweep()+claim() iterations per second, each one a BEGIN IMMEDIATE write transaction on the shared jobs database. The loop holds one default-executor thread and the token's single polling slot, so later polls by the same token get 429. The token is checked only once, when the request starts (require_runner -> authenticate). When the owner revokes the token, fresh requests get 401, but the open poll keeps running. The revoke route only sets revoked_at, and RunnerTaskStore.claim never checks whether the token is revoked. So the next runner task the owner queues is claimed under the revoked token id and returned to the revoked holder: the profile subset (pack.PROFILE_KEYS), the answer bank, the application answers, the kit and the resume metadata. The resume bytes themselves need a fresh request, which now gets 401. The task stays claimed by the dead token, and the legitimate runner cannot have it until the lease lapses. If it was a submit task, it then ends as lost_submit. With an ordinary numeric wait the same gap exists, but only for up to 25 s after revocation; a control run with wait=1e9 was clamped and returned after 25.02 s.",
+  "root_cause": "RunnerHub.claim (applier/runner_hub.py:296) does not reject non-finite wait values. Its loop (lines 305-317) ends only when 'remaining <= 0', which is never true for NaN, and Condition.wait(NaN) does not block. Token liveness is checked only once, at request start (server/routes/runner.py:40 -> core/runner_auth.py:46 -> db/runner_db.py:171). RunnerTaskStore.claim (db/runner_db.py:297-309) hands a task to any token_id without checking that the token is still unrevoked. RunnerTokenStore.revoke (db/runner_db.py:215-224), the only thing the DELETE route calls (server/routes/runner_tokens.py:41), does not end open polls or release tasks the token has claimed.",
+  "intended_behavior": "A claim waits at most MAX_WAIT_SECONDS (25 s). A non-numeric or non-finite wait gets a 400. The documented invariant (db/runner_db.py:15, server/routes/runner_tokens.py:8) is that a revoked token stops working at once. So a revoked token, or a token whose user is inactive, can never claim a task or receive a payload after the revocation commits, including from a poll that started earlier.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "server/routes/runner.py",
+    "line": 51,
+    "scope": "claim",
+    "description": "POST /api/runner/claim accepts the JSON body as a plain dict. Line 52 takes wait = data.get('wait') and passes it to RunnerHub.claim in a worker thread without validating it."
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/runner.py",
+    "line": 40,
+    "scope": "require_runner",
+    "description": "The bearer token is authenticated once, at request start. Nothing re-checks it during the long poll."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/runner_hub.py",
+    "line": 296,
+    "scope": "RunnerHub.claim",
+    "description": "wait = min(max(float(wait), 0.0), 25.0). float('nan') succeeds, and both max and min keep NaN."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/runner_hub.py",
+    "line": 305,
+    "scope": "RunnerHub.claim",
+    "description": "deadline = clock() + NaN. At lines 311-314, remaining is NaN, 'remaining <= 0' is false, and _wait(min(NaN, 1.0)) -> Condition.wait(NaN) returns at once. The result is a busy loop with no bound, calling sweep() and _claim_valid()."
+   },
+   {
+    "kind": "propagation",
+    "file": "db/runner_db.py",
+    "line": 215,
+    "scope": "RunnerTokenStore.revoke",
+    "description": "Revocation only sets revoked_at. Open polls and tasks already claimed by that token are left as they are."
+   },
+   {
+    "kind": "sink",
+    "file": "db/runner_db.py",
+    "line": 306,
+    "scope": "RunnerTaskStore.claim",
+    "description": "UPDATE runner_tasks SET status='claimed', claimed_by=<revoked token_id> with no check of runner_tokens.revoked_at. RunnerHub.payload (applier/runner_hub.py:378-389) then returns the profile subset, answers and kit to the revoked holder."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "applier/runner_hub.py",
+    "line": 296,
+    "description": "The only validation of wait is float() plus a min/max clamp, and the clamp keeps NaN."
+   },
+   {
+    "file": "applier/runner_hub.py",
+    "line": 312,
+    "description": "The loop exits only when 'remaining <= 0', which is false for NaN."
+   },
+   {
+    "file": "applier/runner_hub.py",
+    "line": 259,
+    "description": "_wait calls Condition.wait(seconds). With seconds=NaN this does a non-blocking acquire and returns at once, so the loop spins."
+   },
+   {
+    "file": "applier/runner_hub.py",
+    "line": 383,
+    "description": "The payload carries the owner's profile subset, plus the answer bank, application answers, kit and resume metadata (lines 384-388)."
+   },
+   {
+    "file": "db/runner_db.py",
+    "line": 302,
+    "description": "claim() selects and claims the oldest queued task for any token_id. It does not look at whether the token is revoked."
+   },
+   {
+    "file": "db/runner_db.py",
+    "line": 15,
+    "description": "Documented invariant: a token 'can be revoked, which stops it at once'."
+   },
+   {
+    "file": "core/runner_auth.py",
+    "line": 46,
+    "description": "There is one authentication call per HTTP request, and no later re-check."
+   },
+   {
+    "file": "server/routes/runner_tokens.py",
+    "line": 41,
+    "description": "The revoke route only calls RunnerTokenStore.revoke. It does not end polls or touch tasks."
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "authentication_level",
+    "description": "The attacker holds a runner bearer token that was valid when the claim request started, for example a stolen or leaked apxr_ token or a compromised runner machine. Only the owner can mint tokens."
+   },
+   {
+    "kind": "data_state",
+    "description": "For the disclosure after revocation, the owner must queue a runner task (executor runner, or auto) while the spinning poll is alive. The availability effect (busy loop, a held thread, a write transaction on every iteration) needs no data."
+   },
+   {
+    "kind": "network_routing",
+    "description": "To read the payload, the attacker keeps the HTTP connection open until a task arrives. The server-side spin and the claim of the task under the revoked token happen even if the client disconnects, because asyncio.to_thread work is not cancelled."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "Holder of a runner token that the owner later revokes",
+   "payloads": [
+    "POST /api/runner/claim with header 'Authorization: Bearer <apxr_ token>' and body {\"wait\": \"nan\"}"
+   ],
+   "instructions": [
+    "Copy the source into sandbox scratch and make the copy writable. In-process, set up the app the way tests/test_runner.py RunnerHttpTests does: temp settings/users/jobs DBs, a signup for the dummy owner, then the owner creates a runner token through POST /api/settings/runner-tokens.",
+    "Baseline: POST /api/runner/claim {\"wait\":1} returns {\"task\":null} after about 1 s. Control: {\"wait\":1e9} is clamped and returns after about 25 s.",
+    "From a thread, POST /api/runner/claim {\"wait\":\"nan\"} with the token, counting RunnerTaskStore.sweep calls.",
+    "After 27 s, check that the request is still open and that a second claim with the same token gets 429.",
+    "As the owner, DELETE /api/settings/runner-tokens/<id>. Check that a fresh claim with the token now gets 401 and that the NaN poll is still alive.",
+    "Add a dummy job, move it to preparing, and enqueue an apply task with RunnerHub(1).enqueue. Check the pending response and the task row's claimed_by.",
+    "Command: sbx.sh <scratch> 120 bash -c 'cd /mnt/work/src && env APP_ENCRYPTION_KEY=<fresh Fernet key> APP_SECRET_KEY=<40+ char dummy> python3 /mnt/work/v02_nan.py'. The output is written to scratch work/evidence/v02_nan_revoked.json, a predeclared file for parent promotion."
+   ],
+   "observed_result": "Independent re-run by the verifier. The wait=1 baseline returned {\"task\":null} after 1.01 s, and wait=1e9 was clamped and returned after 25.02 s. The NaN poll was still open after 27 s, with 80727 sweep() calls. A second poll by the same token got 429 'this token is already waiting for a task'. Revoke returned 200, a fresh claim with the token got 401, and the NaN poll was still alive 2 s later. After an apply task was queued, the NaN poll returned HTTP 200 after 29.06 s carrying that task's id and the payload keys [answers, application, attempt, kind, kit, lease_seconds, profile, resume, task_id]. The task row showed status=claimed, claimed_by=1, which is the revoked token's id, and the token list showed active=false."
+  },
+  "remediation": {
+   "strategy": "Reject a non-finite wait with a 400. Re-check token liveness on every loop iteration. Make the claim UPDATE itself require an unrevoked token, so a revocation committed during a poll cannot hand out a task. On revoke, return tasks claimed by that token to the queue; submit tasks go to the existing lost_submit handling instead.",
+   "code_changes": [
+    {
+     "file_name": "applier/runner_hub.py",
+     "fixed_code": "import math\n...\n    def claim(self, token_id: int, wait: float = MAX_WAIT_SECONDS) -> dict | None:\n        try:\n            wait = float(wait)\n        except (TypeError, ValueError):\n            raise RunnerError(\"wait must be a number of seconds\")\n        if not math.isfinite(wait):\n            raise RunnerError(\"wait must be a finite number of seconds\")\n        wait = min(max(wait, 0.0), float(MAX_WAIT_SECONDS))\n        ...\n            while True:\n                if not self.tokens.is_live(token_id):   # revoked or user deactivated since the request began\n                    raise RunnerError(\"this runner token was revoked\")  # status 401\n                self.sweep()\n                ..."
+    },
+    {
+     "file_name": "db/runner_db.py",
+     "fixed_code": "            c.execute(\"UPDATE runner_tasks SET status='claimed', claimed_by=?, claimed_at=?, lease_until=?, \"\n                      \"attempts=attempts+1 WHERE id=? AND user_id=? AND status='queued' \"\n                      \"AND EXISTS (SELECT 1 FROM runner_tokens t WHERE t.id=? AND t.user_id=? AND t.revoked_at=0)\",\n                      (token_id, now, now + lease, r[\"id\"], self.user_id, token_id, self.user_id))\n            # return None when rowcount == 0"
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "low",
+    "reason": "The attack needs a runner token, and only the owner can mint one. The realistic attacker has a stolen or leaked token or controls a compromised runner host. With a token, the attack is one trivial request."
+   },
+   "impact": {
+    "score": "medium",
+    "reason": "It defeats token revocation with no time limit. After revocation, the revoked holder receives the owner's profile subset, answer bank, application answers and kit for the next queued runner task, and that task is kept from the legitimate runner until the lease lapses. The resume bytes stay protected, because downloading them needs a fresh, now-rejected request. Each spinning request also holds a worker thread and runs about 3,000 write transactions per second on the shared jobs DB until a task arrives."
+   },
+   "overall_severity": "medium"
+  },
+  "confidence": {
+   "score": "high",
+   "reason": "Every trace line was re-read and matches the source. The verifier reproduced the result independently in the sandbox through the real FastAPI app (TestClient): a poll with no time limit, 429 on a second poll, 401 on fresh requests after revocation, and a 200 payload delivered with the task row claimed by the revoked token id."
+  }
+ },
+ {
+  "verdict": "confirmed",
+  "fingerprint": "applier/session.py:_save_answers:page-derived-field-key-writes-master-profile-bypassing-CORRECTABLE_FIELDS",
+  "title": "Answers to form questions overwrite the owner's master work-authorization, sponsorship and identity facts under keys the job page chose",
+  "description": "When an application stops on a mandatory question, the owner sees only the page's label (ApplyTab.jsx:88) and types an answer. Orchestrator._save_answers (applier/session.py:298) and ProfileDB.resolve_missing (db/profile_db.py:347) then write that answer into the single machine-wide profile under the prompt's field_key. There is no allow-list. The key comes from the untrusted application form. The site adapters map labels by regex: standard.key_for turns any work-authorization label, including one about another country, into authorized_to_work, and any sponsorship label into require_sponsorship. The universal filler takes field_key verbatim from LLM output built from page text (form_analyzer.py:299). standard.profile_value deliberately refuses to answer a question that names another country from the home-country fact, so the question goes to the owner. The owner's truthful answer to 'Are you legally authorized to work in the United States?' (No) then replaces the owner's India work-authorization fact. The 'Remember this answer' checkbox is on by default. Every later application is then auto-filled from the overwritten fact without asking, and the review packet labels it source=profile at 0.95 confidence (review.py:46,131). The same unfiltered sink accepts any key, so an LLM-assigned key (for example email or full_name on an innocuous question) overwrites that master field too. CORRECTABLE_FIELDS (db/profile_db.py:91) exists to keep identity and compliance keys from being rewritten by per-job input, but only the corrections path applies it (session.py:833).",
+  "root_cause": "_save_answers (applier/session.py:298) calls profile_db.set_many on every answered key whose mode is not 'once', and resolve_missing (db/profile_db.py:347) calls set on the stored field_key. Neither checks the key against CORRECTABLE_FIELDS or any other allow-list. Neither ties the key's profile-wide meaning to the specific question the owner answered, even though that key was derived from page-controlled form content (adapters/standard.key_for or the LLM's field_key).",
+  "intended_behavior": "An answer given for one application is stored for that application (application_answers) and in the answer bank under the visible question. It reaches the master profile only for allow-listed, application-neutral keys. Identity and compliance keys (authorized_to_work, require_sponsorship, full_name, email, URLs, search_*, cover_letter, resume_summary) change only via the Profile page, as the comment at db/profile_db.py:69-90 states.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "applier/adapters/form.py",
+    "line": 292,
+    "scope": "FormAdapter._field",
+    "description": "The label from the page's form control becomes field_key through _key -> standard.key_for (form.py:271-275). On the universal path the LLM's field_key is copied verbatim (form_analyzer.py:299)."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/adapters/standard.py",
+    "line": 86,
+    "scope": "key_for",
+    "description": "Any label matching _AUTH (line 45), including one naming the United States, returns authorized_to_work. A label matching 'sponsor' returns require_sponsorship (line 88)."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/adapters/standard.py",
+    "line": 125,
+    "scope": "profile_value",
+    "description": "A question that names a country other than location_country is deliberately not answered from the profile, so resolve() marks the required field needs_manual (line 149)."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/session.py",
+    "line": 202,
+    "scope": "Orchestrator._finish_first_pass",
+    "description": "flag_missing stores the page-derived field_key, and missing_prompts carry it to the UI (line 219). The UI shows only the label (ApplyTab.jsx:88)."
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/apply.py",
+    "line": 146,
+    "scope": "answer",
+    "description": "The owner's POST /api/apply/answer/{job_id} (route at line 118) runs Orchestrator.run_iter2, which calls _save_answers first (session.py:252), before preflight or any browser work."
+   },
+   {
+    "kind": "propagation",
+    "file": "db/profile_db.py",
+    "line": 347,
+    "scope": "ProfileDB.resolve_missing",
+    "description": "Also writes the value into profile_fields under the stored page-derived field_key, with source user_prompt."
+   },
+   {
+    "kind": "sink",
+    "file": "applier/session.py",
+    "line": 298,
+    "scope": "Orchestrator._save_answers",
+    "description": "set_many writes every answered key into the global profile.db with no CORRECTABLE_FIELDS filter, unlike _apply_corrections (session.py:833)."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "db/profile_db.py",
+    "line": 91,
+    "description": "CORRECTABLE_FIELDS excludes authorized_to_work, require_sponsorship, full_name, email, URLs, search_*, resume_summary and cover_letter. The comment at lines 69-90 says to change these only via the Profile page."
+   },
+   {
+    "file": "applier/session.py",
+    "line": 833,
+    "description": "Only the corrections path filters keys against CORRECTABLE_FIELDS. The local control confirmed that it dropped authorized_to_work and email."
+   },
+   {
+    "file": "applier/form_analyzer.py",
+    "line": 299,
+    "description": "The universal filler copies field_key verbatim from the LLM output."
+   },
+   {
+    "file": "applier/adapters/standard.py",
+    "line": 29,
+    "description": "STANDARD_KEYS includes authorized_to_work and require_sponsorship. resolve() then fills later forms from the overwritten master value without asking."
+   },
+   {
+    "file": "db/answer_bank_db.py",
+    "line": 447,
+    "description": "Profile-derived answer-bank entries also serve the overwritten profile value as candidates for matching questions."
+   },
+   {
+    "file": "applier/review.py",
+    "line": 131,
+    "description": "A profile hit is labelled source profile at CONF_PROFILE=0.95 (line 46), so the review packet does not flag the value as unusual."
+   },
+   {
+    "file": "frontend/src/components/applications/ApplyTab.jsx",
+    "line": 88,
+    "description": "The prompt shows p.label, not the field_key it will overwrite. 'Remember this answer' defaults to on (line 72), which sends mode auto rather than once."
+   },
+   {
+    "file": "server/routes/onboarding.py",
+    "line": 105,
+    "description": "The sibling Profile writer validates keys against known fields. The answer path does not."
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "authentication_level",
+    "description": "The owner answers a missing-field prompt for one of their applications (POST /api/apply/answer requires require_owner)."
+   },
+   {
+    "kind": "user_interaction",
+    "description": "The owner truthfully answers the question shown (for example, a US or UK work-authorization or sponsorship question) and leaves 'Remember this answer' at its default (on)."
+   },
+   {
+    "kind": "system_configuration",
+    "description": "A site adapter (Greenhouse or Lever) derives the key deterministically from the label. Or the universal filler is used and the LLM assigns an identity key to a page question."
+   },
+   {
+    "kind": "data_state",
+    "description": "The owner's profile holds home-country values (for example location_country=India, authorized_to_work=Yes, require_sponsorship=No)."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "Untrusted application-form content: any job form that asks a required question about another country's work authorization or sponsorship, or, through the LLM path, one whose benign question gets mapped to an identity key. The owner's own answer is then durably written over a master profile fact the owner did not choose to change.",
+   "payloads": [
+    "Required Greenhouse select label: \"Are you legally authorized to work in the United States? *\" (options Yes/No) -> field_key authorized_to_work; owner answer {\"authorized_to_work\": \"No\"}",
+    "Required Greenhouse select label: \"Will you require visa sponsorship to work in the United Kingdom?\" -> field_key require_sponsorship; owner answer {\"require_sponsorship\": \"Yes\"}"
+   ],
+   "instructions": [
+    "Copy the source into the sandbox scratch (work/src, owner-writable, data/ removed). Seed a dummy ProfileDB with location_country=India, authorized_to_work=Yes, require_sponsorship=No, email=owner@example.invalid.",
+    "Build the two controls with GreenhouseAdapter()._field and run standard.resolve against ProfileDB().summary(). Both come back with empty db_value and needs_manual=True, under the keys authorized_to_work and require_sponsorship.",
+    "Add a dummy job with JobsDB(user_id=1).add. Monkeypatch Orchestrator._preflight to return False so nothing reaches a browser. Call Orchestrator(job)._finish_first_pass with those missing_fields, then Orchestrator(job).run_iter2({'authorized_to_work':'No','require_sponsorship':'Yes'}, remember=None), which is the call the /api/apply/answer route makes.",
+    "Read ProfileDB and field_history. Then resolve a new form with 'Are you authorized to work in India?' and 'Do you require visa sponsorship?'. As a control, call _apply_corrections with core.llm.chat_json stubbed to return authorized_to_work, email and phone.",
+    "Run command: sbx.sh <v12 scratch> 120 bash -c 'cd /mnt/work/src && env APP_ENCRYPTION_KEY=<fresh Fernet key> APP_SECRET_KEY=<40-char dummy> python3 /mnt/work/v12_harness.py'. Output was written to scratch work/evidence/v12_answer_key_profile_overwrite.txt, which is predeclared for promotion."
+   ],
+   "observed_result": "V1: both fields have key authorized_to_work / require_sponsorship, db_value '' and needs_manual True. V2: the prompts carry those labels with those keys. V3: the profile changed from authorized_to_work=Yes, require_sponsorship=No to authorized_to_work=No, require_sponsorship=Yes. V4: field_history has ('authorized_to_work','Yes','No','user_prompt') and ('require_sponsorship','No','Yes','user_prompt'). V5: the later India form was auto-filled with 'Are you authorized to work in India?' -> 'No' and 'Do you require visa sponsorship?' -> 'Yes', both needs_manual False. V6: the corrections-path control dropped authorized_to_work and email and set only phone. The LLM-assigned-key variant (for example email) was not run. It follows from the same unfiltered set_many and resolve_missing code."
+  },
+  "remediation": {
+   "strategy": "Never let a per-application answer rewrite a master profile key unless the key is allow-listed. Write the profile only for keys that are pending prompts of this application and are in CORRECTABLE_FIELDS (or a dedicated ANSWERABLE set). Keep every other answer only in application_answers and the label-keyed answer bank, and pass store=False to resolve_missing for it. Add regression tests: answering a US-authorization prompt keyed authorized_to_work leaves profile.authorized_to_work unchanged, and an LLM-keyed 'email' prompt leaves profile.email unchanged.",
+   "code_changes": [
+    {
+     "file_name": "applier/session.py",
+     "fixed_code": "    def _save_answers(self, answers: dict[str, str], modes: dict[str, str]):\n        from db.profile_db import CORRECTABLE_FIELDS\n        s = self.session\n        prompt_keys = {p[\"field_key\"] for p in s.missing_prompts}\n        def to_profile(k):\n            return k in prompt_keys and k in CORRECTABLE_FIELDS and modes.get(k) != \"once\"\n        self.profile_db.set_many({k: v for k, v in answers.items() if to_profile(k)},\n                                 source=\"user_prompt\")\n        bank = self._bank()\n        for p in s.missing_prompts:\n            key, value = p[\"field_key\"], (answers.get(p[\"field_key\"]) or \"\")\n            if not value:\n                continue\n            mode = modes.get(key, \"auto\")\n            confirmed = s.bank_confirm.pop(key, None)\n            s.application_answers[normalize_question(p[\"label\"])] = value\n            self.profile_db.resolve_missing(p[\"id\"], value, store=to_profile(key))\n            ...  # answer-bank handling unchanged"
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "medium",
+    "reason": "Foreign-country work-authorization and sponsorship questions are common on ATS forms. The deterministic adapter path needs no attacker sophistication: answering them truthfully with the default Remember setting triggers the overwrite. The LLM-key variant also needs the page to steer the model."
+   },
+   "impact": {
+    "score": "medium",
+    "reason": "The owner's legally sensitive work-authorization and sponsorship facts, or identity fields, are durably changed. Later real applications to other employers are then filled with false values without asking, and review shows them as ordinary profile facts. The impact is limited to the integrity of submissions made in the owner's name. There is no confidentiality or cross-tenant effect."
+   },
+   "overall_severity": "medium"
+  },
+  "confidence": {
+   "score": "high",
+   "reason": "The verifier reproduced the result independently in the sandbox through the real GreenhouseAdapter._field, standard.resolve, Orchestrator._finish_first_pass, Orchestrator.run_iter2 and ProfileDB code with dummy data. The corrections-path control shows the allow-list is skipped only on this path. Only the LLM-key variant rests on source reading, and the deterministic adapter path needs no LLM."
+  }
+ },
+ {
+  "verdict": "rejected",
+  "fingerprint": "applier/universal.py:run_application:pre-review-fill-and-resume-upload-into-unverified-apply-landing-origin",
+  "title": "First apply pass fills owner profile PII and attaches the resume into the page the Apply click lands on, before the review step, without binding the landing origin to the queued job",
+  "description": "On POST /api/apply/start (require_owner), Orchestrator.run_iter1 runs the 'apply' pass: run_application navigates to the scraped job URL in the owner's persistent Opera profile, clicks the first element matching a broad Apply selector list, adopts whatever popup/redirect the click yields with no comparison of its origin to job['url'], and then runs form_filler.execute on that page in iteration 1 — typing profile values and attaching the resume via set_input_files — before the session enters ready_for_review. Page JS on the landing origin can observe the typed values and read the attached File before any submit. The launch is also hardened-down (--no-sandbox, extensions/sync kept, accept_downloads=True) on the owner's real profile.",
+  "claimed_root_cause": "_click_apply_button returns the popup/redirected page without any origin check, and run_application executes form_filler.execute (including resume set_input_files) on it before the review gate; launch_browser renders that page in the owner's persistent profile with the renderer sandbox disabled.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "server/routes/apply.py",
+    "line": 68,
+    "scope": "start",
+    "description": "Owner starts an application for one of their own scraped job ids (require_owner); run() calls Orchestrator(job).run_iter1(emit) at line 99."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/session.py",
+    "line": 184,
+    "scope": "Orchestrator.run_iter1",
+    "description": "run_iter1 runs the 'apply' pass via self._execute('apply', ...) after preparing the kit; the application is not yet in any review state."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/executors.py",
+    "line": 83,
+    "scope": "ServerExecutor.execute",
+    "description": "Opens the browser via orch._open_browser and runs run_application on page 0 of the persistent context."
+   },
+   {
+    "kind": "propagation",
+    "file": "core/browser.py",
+    "line": 59,
+    "scope": "launch_browser",
+    "description": "launch_persistent_context on cfg.opera_data() with --no-sandbox, extensions/sync retained via ignore_default_args, accept_downloads=True."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/universal.py",
+    "line": 111,
+    "scope": "run_application",
+    "description": "page.goto(job['url']) with no scheme/origin validation."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/universal.py",
+    "line": 155,
+    "scope": "run_application",
+    "description": "clicked, page = _click_apply_button(page, emit): the returned (possibly cross-origin popup/redirect) page replaces the job page unconditionally."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/universal.py",
+    "line": 189,
+    "scope": "run_application iteration loop",
+    "description": "Calls form_filler.execute on the landing page before the ready_for_review transition (session.py:238)."
+   },
+   {
+    "kind": "sink",
+    "file": "applier/form_filler.py",
+    "line": 104,
+    "scope": "_fill_one",
+    "description": "set_input_files(resume) and keyboard typing of profile values into the landing page's inputs; page JS can read both."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "applier/universal.py",
+    "line": 11,
+    "description": "Module docstring documents the intended per-job flow as 'Open URL -> Click Apply -> ... -> Fill known fields -> ... -> Screenshot -> user reviews -> submit': filling precedes review by design, and review precedes only the submit."
+   },
+   {
+    "file": "applier/universal.py",
+    "line": 42,
+    "description": "The 'human-review-before-anything-happens guarantee' comment is scoped to CLICK_IS_TERMINAL (Naukri) platforms and to NOT auto-clicking/submitting Apply; it promises no auto-submission, not no pre-review form fill."
+   },
+   {
+    "file": "applier/session.py",
+    "line": 238,
+    "description": "_finish_first_pass enters stage 'ready_for_review' only AFTER the apply pass (fill) has returned, confirming the review checkpoint gates submission, not the fill."
+   },
+   {
+    "file": "server/routes/apply.py",
+    "line": 170,
+    "description": "submit requires job stage == 'ready_for_review'; run_submit is additionally gated by dry_run and daily/min-delay limits — the enforced control is on the irreversible submission."
+   },
+   {
+    "file": "applier/form_filler.py",
+    "line": 129,
+    "description": "Profile values are typed character-by-character into the resolved input on whatever page is active."
+   }
+  ],
+  "reason": "The trace is an accurate description of the code, but it does not establish a crossed security boundary; it describes the intended operation of an auto-apply tool, and the one hard control it defines remains enforced. (1) The claimed invariant — that the origin the automation fills must be bound to the job listing's origin — is not a boundary this system establishes or can feasibly establish. Handing a job listing off to an application form on a different origin is the normal, ubiquitous case (LinkedIn/Indeed listings legitimately redirect to Greenhouse, Lever, Workday, iCIMS, SmartRecruiters and arbitrary company career domains); _click_apply_button's expect_page handling exists precisely to follow that hand-off. No source-grounded allowlist of legitimate application origins exists or is possible, so 'no origin binding' is the design, not a defect — binding fill-origin to listing-origin would break the product's core function. (2) The control the code actually documents and implements is review-gated SUBMISSION, and it is intact: the universal.py docstring (lines 11-18) states the flow as fill -> screenshot -> user reviews -> submit, _finish_first_pass only reaches 'ready_for_review' after the fill (session.py:238), and submit (apply.py:170, run_submit dry_run/limits) is the gated irreversible step. The 'human-review-before-anything-happens' comment (universal.py:42-45) is explicitly about click-is-terminal platforms not auto-clicking Apply, i.e. no auto-submit — it never promises that no data is typed into a page before review. The candidate's 'promise vs reality' framing misreads that comment. (3) No action-binding failure: the owner approves applying to a specific job by calling the require_owner-gated start endpoint, and the handler acts on exactly that approved object (job X's own apply flow). The attacker-controlled redirect is a property intrinsic to the approved object itself, not a substitution of a different object by the handler — unlike a genuine binding bug where an approved object A is replaced by B. Per the AI-AND-LLM discipline, an intentional request to exercise one's own authority (the owner's own PII and resume, used for the owner's own stated purpose of applying to a job the owner selected) is not a delegation/binding defect merely because automation executes it. A scam/phishing job posting harvesting an applicant's PII/resume via its own application form is the inherent, accepted risk of applying to that posting — identical for a manual applicant — not a cross-principal disclosure introduced by this code. The hunter's sole decisive blocker (no browser available to observe fill-before-review) is also moot: the mechanism is undisputed and visible in source, so re-running it on a Chromium fixture would not convert intended behavior into a boundary violation. The renderer-sandbox/--no-sandbox host-compromise angle is explicitly disclaimed by the candidate and establishes no additional in-source boundary crossing."
+ },
+ {
+  "verdict": "confirmed",
+  "fingerprint": "applier/universal.py:run_submit:fresh-reanalysis-not-bound-to-review-packet",
+  "title": "Approved submit re-reads the live form and submits field values that were never in the reviewed or auto-approved packet",
+  "description": "A person can approve a review packet (POST /api/applications/{id}/review/approve, or /api/apply/submit), or an autonomy rule can approve it at session.py:749. Orchestrator.submit then copies the packet's values into application_answers, keyed by normalized label (session.py:469). The submit pass does not submit the packet. universal.run_submit reopens the job URL and runs a fresh analyze() on the form the site serves now. AnswerContext.apply replaces values only for labels that match the packet. execute() then fills every field that has a fill_value: the LLM db_value or placeholder, or the adapter's profile value in adapters/runner.run_submit. click_submit / adapter.submit then sends the form. Nothing compares the submitted field set or values with the approved packet. This breaks the contract stated at review.py:30-31 and in the approve route docstring (server/routes/review.py:122-123). It has two triggers. (1) The form changes between the review visit and the submit visit, for example an employer on a hosted ATS or job board adds a question. (2) The model labels a field differently on the second analysis, so the reviewed value or the owner's own edit does not match and a fresh guess is submitted. Either way, profile facts (phone, LinkedIn, date of birth through the LLM) and AI-guessed or placeholder answers go out in the owner's application without review. The require_all_answers_known autonomy gate is bypassed the same way, because answers_known() ran only against the earlier packet. Limit: a page the operator scripts already receives every value during the review pass, because run_application fills the live page at universal.py:189 before approval. The new effect is unreviewed content in the submitted application, sent to the party the owner applied to. It is not a disclosure to some other principal.",
+  "root_cause": "Approval binds only to a label->value map (review.reviewed_answers), which the submit pass uses as a preferred answer source. Neither universal.run_submit nor adapters/runner.run_submit checks, before click_submit or adapter.submit, that every non-file field it fills is in the approved packet with the same value. So a fresh read of a possibly changed page decides part of the submitted action.",
+  "intended_behavior": "review.py:30-31, the approve route docstring and Orchestrator._use_reviewed_values all say approval submits the reviewed values. If the submit pass would fill a non-file field whose normalized label is missing from the packet, or with a different value, the submit should stop and the application should go back to review. Autonomy approval should be held to the same rule, because its require_all_answers_known check covered only the packet.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "server/routes/review.py",
+    "line": 130,
+    "scope": "approve",
+    "description": "The owner's review approval (require_owner) calls apply_routes.submit. The autonomy path enters at applier/session.py:749, self.submit(None, emit, actor=\"autonomy\")."
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/apply.py",
+    "line": 190,
+    "scope": "submit.run",
+    "description": "Orchestrator(job).submit(corrections or None, emit) runs in a background thread."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/session.py",
+    "line": 469,
+    "scope": "Orchestrator._use_reviewed_values",
+    "description": "Packet values are merged into session.application_answers by normalized label. This is the only link between the submit pass and the approved packet."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/session.py",
+    "line": 358,
+    "scope": "Orchestrator.submit",
+    "description": "The submit pass is dispatched through _execute with dry_run read from settings (false by default)."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/universal.py",
+    "line": 366,
+    "scope": "run_submit",
+    "description": "A fresh analyze() of the page as served now. Its output decides the field list, selectors, values and submit_selector."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/universal.py",
+    "line": 374,
+    "scope": "run_submit",
+    "description": "_apply_answers -> AnswerContext.apply replaces db_value only for labels that match the reviewed answers. Fields that do not match keep the fresh LLM value or placeholder."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/universal.py",
+    "line": 376,
+    "scope": "run_submit",
+    "description": "execute() fills every field with a non-empty fill_value, reviewed or not."
+   },
+   {
+    "kind": "sink",
+    "file": "applier/universal.py",
+    "line": 395,
+    "scope": "run_submit",
+    "description": "click_submit sends the application in the owner's name, with no comparison against the approved packet."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "applier/review.py",
+    "line": 31,
+    "description": "The module contract: approving a review submits THESE values, not a fresh re-analysis that might differ."
+   },
+   {
+    "file": "server/routes/review.py",
+    "line": 123,
+    "description": "The approve route docstring says Orchestrator.submit fills from the packet, not from a fresh analysis."
+   },
+   {
+    "file": "applier/autonomy.py",
+    "line": 59,
+    "description": "answers_known() checks only the stored packet from the earlier pass. rule_failures uses it for require_all_answers_known before submit runs."
+   },
+   {
+    "file": "applier/answers.py",
+    "line": 225,
+    "description": "_apply_one looks up the label. If nothing matches it returns None and the field keeps the analyser's db_value or placeholder."
+   },
+   {
+    "file": "applier/form_filler.py",
+    "line": 212,
+    "description": "execute() goes through every field and fills each one whose fill_value (db_value or placeholder) is non-empty."
+   },
+   {
+    "file": "applier/adapters/runner.py",
+    "line": 141,
+    "description": "The adapter run_submit re-extracts the fields and answers standard questions from the profile (no LLM). At line 153 it calls adapter.submit with the same missing binding."
+   },
+   {
+    "file": "applier/universal.py",
+    "line": 189,
+    "description": "Calibration: the review pass (run_application) already fills the live page before approval. On a page the operator scripts, the new effect is the unreviewed submission content, not an earlier disclosure."
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "third_party_dependency",
+    "description": "The application form serves extra or changed fields on the submit visit, for example an employer edits the questions on a hosted ATS or job-board form. Or the fresh analysis labels a reviewed field differently, so the packet value does not match."
+   },
+   {
+    "kind": "user_interaction",
+    "description": "The owner approves the review packet, or an enabled autonomy rule matches. The dry_run setting is off."
+   },
+   {
+    "kind": "authorization_role",
+    "description": "The submit runs with the owner's authority and browser session. The party that changes the form needs no account on the instance."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "An employer or form operator whose application form changes between the agent's review visit and its submit visit. The same gap also opens with no adversary, when the model's second analysis labels a field differently.",
+   "payloads": [
+    "Approved packet: [{label: 'Email', value: 'owner@example.test', source: 'profile', confidence: 0.95}]",
+    "Universal submit-pass analyze() stub: Email (db_value owner@example.test), 'Date of birth' (db_value '1990-01-01'), textarea 'Share my profile with partner recruiters' (placeholder 'yes'), submit_selector '#submit'",
+    "Adapter submit-pass extract_fields(): Email, Phone, LinkedIn profile (standard keys answered from the dummy profile, no LLM)"
+   ],
+   "instructions": [
+    "Copy the source into the scratch directory and run /mnt/work/harness/h.py with python3 -I in the sandbox, with dummy APP_ENCRYPTION_KEY and APP_SECRET_KEY. There is no network, browser or LLM.",
+    "Build the packet with review.build_fields from one Email snapshot whose value equals the answered profile value. Record autonomy.answers_known(packet) and rule_failures for a '*' rule with require_all_answers_known=True.",
+    "Load review.reviewed_answers(packet) into a MemoryState.application_answers and wrap it in an AnswerContext over a bank that resolves nothing, as Orchestrator._use_reviewed_values does.",
+    "Variant A: stub universal.analyze and extract_fields. Keep the real form_filler.execute and click_submit, driven by a fake page that records fills and clicks. Call universal.run_submit(page, job, profile, None, dry_run=False, answers=ctx).",
+    "Variant B: call adapters.runner.run_submit with a fake Adapter whose extract_fields returns Email, Phone and LinkedIn profile, and record adapter.fill and adapter.submit.",
+    "Output is written to work/evidence/v03_submit_binding.json for parent promotion."
+   ],
+   "observed_result": "answers_known(packet)=true and rule_failures=[]. Variant A: the real execute() typed '1990-01-01' into #dob and 'yes' into #share. Neither field is in the packet. The real click_submit clicked '#submit', and run_submit returned {success: true, dry_run: false}. Variant B: with no LLM, the adapter path filled Phone '+10000000000' and LinkedIn profile from the profile, neither of which is in the packet. It called adapter.submit(dry_run=False) and returned success=true."
+  },
+  "remediation": {
+   "strategy": "Pass the approved packet's reviewed answers into the submit pass, in both universal.run_submit and adapters/runner.run_submit. Before click_submit or adapter.submit, refuse to submit if any non-file field with a non-empty fill value has a normalized label missing from the packet, or a value different from the packet's. Return a failure that sends the job back to review. Skip the check only when no packet exists (the legacy flow), or when the owner gave free-text corrections, which are meant to re-derive values. Regression test: the harness above must return success=false without clicking submit, and an unchanged form must still submit.",
+   "code_changes": [
+    {
+     "file_name": "applier/universal.py",
+     "fixed_code": "from db.answer_bank_db import normalize_question\n\ndef _unreviewed(fields, reviewed: dict[str, str]) -> list[str]:\n    out = []\n    for f in fields:\n        if (f.field_type or '').lower() in ('file', 'upload'):\n            continue\n        v = (f.fill_value() or '').strip()\n        if v and (reviewed.get(normalize_question(f.label)) or '').strip() != v:\n            out.append(f.label)\n    return out\n\n# run_submit(..., reviewed: dict[str, str] | None = None): after _apply_answers(...), before execute():\n        if reviewed is not None:\n            extra = _unreviewed(analysis.fields, reviewed)\n            if extra:\n                return _fail('The form changed since review - not submitted: ' + '; '.join(extra[:3]))"
+    },
+    {
+     "file_name": "applier/adapters/runner.py",
+     "fixed_code": "# run_submit(..., reviewed: dict[str, str] | None = None): after _read(...), before _fill_and_report(...):\n    if reviewed is not None:\n        extra = U._unreviewed(analysis.fields, reviewed)\n        if extra:\n            return U._fail('The form changed since review - not submitted: ' + '; '.join(extra[:3]))"
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "low",
+    "reason": "The form has to change between the review visit and the submit visit, or the model has to label fields differently on the second analysis. Then a human approval or a matching autonomy rule is needed, with dry_run off."
+   },
+   "impact": {
+    "score": "low",
+    "reason": "A real application goes out in the owner's name with profile facts and AI or placeholder answers the owner never reviewed, and autonomy's all-answers-known policy is bypassed. The recipient is the party the owner chose to apply to. A page the operator scripts already sees the review-pass values. No other principal, tenant or credential is affected."
+   },
+   "overall_severity": "low"
+  },
+  "confidence": {
+   "score": "medium",
+   "reason": "The missing binding is clear in the source. It was reproduced independently through the real run_submit, AnswerContext, form_filler.execute/click_submit and the review/autonomy code. The adapter variant needs no model. A live page changing between visits, and the model's exact relabeling, were not observed."
+  }
+ },
+ {
+  "verdict": "confirmed",
+  "fingerprint": "core/throttle.py:LoginThrottle:dev-ui-proxy-forwards-client-xff-defeats-login-ratelimit",
+  "title": "In --dev-ui mode, a client-supplied X-Forwarded-For passes through the loopback Next proxy and lets anyone bypass the login brute-force throttle",
+  "description": "In --dev-ui mode, main.py starts `next dev` (frontend/package.json runs `next dev` with no -H flag). frontend/next.config.mjs rewrites /api/:path* to the backend at http://127.0.0.1:8000. For an external rewrite, Next 16.3.7 calls router-utils/proxy-request.js proxyRequest(), which builds an httpxy ProxyServer. That ProxyServer sets only x-forwarded-host and does not enable xfwd. httpxy setupOutgoing copies every client request header ({...req.headers}), so a client's X-Forwarded-For reaches the backend unchanged. The backend runs as uvicorn.Config(app, host, port, log_level='warning') (main.py:187). uvicorn 0.54.0 defaults to proxy_headers=True and forwarded_allow_ips='127.0.0.1,::1', and the proxy connects from 127.0.0.1, so ProxyHeadersMiddleware replaces scope['client'] with the client's chosen value. server/routes/auth.py:_client_ip returns request.client.host. core/throttle.py:LoginThrottle uses that value in both of its keys: acct:{ip}|{email} with a limit of 5 per 15 minutes, and ip:{ip} with a limit of 20 per 15 minutes. If the attacker sends a new X-Forwarded-For on each attempt, every failure lands in a fresh bucket. Neither limit ever trips, on POST /api/auth/login or on POST /api/auth/change-password, which shares the same throttle (auth.py:120-129).",
+  "root_cause": "The throttle counts failures per request.client.host. In --dev-ui mode that value comes from the client's own X-Forwarded-For. The Next dev rewrite proxy (httpxy, xfwd off) forwards that header unchanged from a loopback socket. uvicorn's default ProxyHeadersMiddleware, which main.py's uvicorn.Config leaves on, trusts X-Forwarded-For from loopback. Nothing between the client and the throttle removes or replaces the client's header. The comment in core/throttle.py assumes proxy headers are off unless --proxy-headers is passed, but uvicorn turns them on by default.",
+  "intended_behavior": "Failed logins should be counted against an identity the client cannot forge. A forwarded-for value should only be trusted when a trusted ingress sets it after stripping any copy the client sent. The local Next dev proxy does not strip it, so the backend should not trust it.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "frontend/next.config.mjs",
+    "line": 31,
+    "scope": "config.rewrites",
+    "description": "An unauthenticated client sends POST /api/auth/login to the Next dev server (:3000, started by `next dev`) with an X-Forwarded-For value of its choosing. The rewrite sends /api/:path* to http://127.0.0.1:8000 through Next's proxyRequest/httpxy. That path copies all client headers and overrides only x-forwarded-host."
+   },
+   {
+    "kind": "propagation",
+    "file": "main.py",
+    "line": 187,
+    "scope": "start_server",
+    "description": "uvicorn.Config(app, host=cfg.APP_HOST, port=cfg.APP_PORT, log_level='warning') leaves proxy_headers=True and forwarded_allow_ips='127.0.0.1,::1' at their defaults. The proxy connects from 127.0.0.1, so ProxyHeadersMiddleware rewrites scope['client'] from X-Forwarded-For."
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/auth.py",
+    "line": 58,
+    "scope": "_client_ip",
+    "description": "Returns request.client.host, which is now the value the attacker chose. login() passes it to the throttle at line 64; change_password() does the same at line 120."
+   },
+   {
+    "kind": "sink",
+    "file": "core/throttle.py",
+    "line": 45,
+    "scope": "LoginThrottle._keys",
+    "description": "Both buckets, 'acct:{ip}|{email}' and 'ip:{ip}', are keyed only on that ip. A different X-Forwarded-For per attempt gives a different key each time, so retry_after never reaches per_account=5 or per_ip=20."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "core/throttle.py",
+    "line": 45,
+    "description": "The throttle keys come only from the ip argument: f'acct:{ip}|{email.strip().lower()}', f'ip:{ip}'."
+   },
+   {
+    "file": "server/routes/auth.py",
+    "line": 58,
+    "description": "_client_ip returns request.client.host. ProxyHeadersMiddleware rewrites this from a trusted loopback peer's X-Forwarded-For."
+   },
+   {
+    "file": "server/routes/auth.py",
+    "line": 64,
+    "description": "login() calls login_throttle.retry_after(ip, creds.email) before checking the password. record_failure at line 75 uses the same ip."
+   },
+   {
+    "file": "server/routes/auth.py",
+    "line": 121,
+    "description": "change_password() applies the same retry_after/record_failure throttle (lines 121 and 129), keyed on _client_ip."
+   },
+   {
+    "file": "main.py",
+    "line": 187,
+    "description": "uvicorn.Config is built without proxy_headers or forwarded_allow_ips, so uvicorn 0.54.0's defaults apply: True and '127.0.0.1,::1' (uvicorn/config.py:225, 363, 543-544)."
+   },
+   {
+    "file": "frontend/next.config.mjs",
+    "line": 31,
+    "description": "The dev rewrite sends /api/:path* to the loopback backend. In Next 16.3.7, proxy-request.js creates an httpxy ProxyServer with only headers {'x-forwarded-host'} and no xfwd. setupOutgoing does e.headers={...r.headers}, so the client's X-Forwarded-For is relayed unchanged."
+   },
+   {
+    "file": "core/throttle.py",
+    "line": 21,
+    "description": "The module comment assumes the app sees the proxy's IP unless uvicorn is started with --proxy-headers. In fact uvicorn enables proxy headers by default."
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "system_configuration",
+    "description": "The server is started with `python main.py --dev-ui`, so the Next dev server proxies /api to the loopback backend. Production mode, with the static export served directly by uvicorn and a non-loopback peer, is not affected by this path."
+   },
+   {
+    "kind": "network_routing",
+    "description": "The attacker can send HTTP requests with a chosen X-Forwarded-For to the Next dev server on :3000. `next dev` is started without -H, so it listens on all interfaces by default and is reachable from the LAN or any network that can reach the host. A cross-site browser page cannot set this header in a simple request."
+   },
+   {
+    "kind": "authentication_level",
+    "description": "No authentication is needed for POST /api/auth/login. POST /api/auth/change-password uses the same throttle but requires a session."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "An unauthenticated network client brute-forcing or password-spraying the owner's (or any user's) account while the instance runs in --dev-ui mode.",
+   "payloads": [
+    "POST /api/auth/login HTTP/1.1  Host: 127.0.0.1:3000  Content-Type: application/json  X-Forwarded-For: 203.0.113.1  {\"email\":\"owner@example.test\",\"password\":\"wrong0\"}",
+    "POST /api/auth/login HTTP/1.1  Host: 127.0.0.1:3000  Content-Type: application/json  X-Forwarded-For: 203.0.113.2  {\"email\":\"owner@example.test\",\"password\":\"wrong1\"}"
+   ],
+   "instructions": [
+    "Inside the OS-enforced sandbox (no external network, nobody uid, 1 GiB AS), from a writable copy of the source with a dummy APP_ENCRYPTION_KEY/APP_SECRET_KEY: build the real FastAPI app with server.app.create_app(), then serve it with exactly main.py's uvicorn.Config(app, host='127.0.0.1', port=8000, log_level='warning') wrapped by core.shutdown.make_server.",
+    "Run a Node 22 front end on 127.0.0.1:3000 that calls the shipped Next 16.3.7 next/dist/server/lib/router-utils/proxy-request.js proxyRequest() for each request, with the destination from next.config.mjs (http://127.0.0.1:8000 + path). This is the same function router-server.js uses for external rewrites. A full `next dev` run was not used because it cannot initialize under the 1 GiB limit, so the Next routing layer before proxyRequest was checked from source instead: no middleware exists and nothing touches x-forwarded-for.",
+    "Create the dummy owner owner@example.test with signup.",
+    "Control: send 7 wrong-password logins through :3000 with no X-Forwarded-For.",
+    "Attack: clear the in-memory throttle, then send 30 wrong-password logins through :3000, each with a different X-Forwarded-For (203.0.113.1-30). Follow with the correct password using X-Forwarded-For: 198.51.100.7.",
+    "Result file: work/evidence/devproxy_xff_throttle.json (scratch, for parent promotion). The hunter's isolated middleware fixture is at agents/h12-devui/artifacts/work/evidence/xff_trust.json."
+   ],
+   "observed_result": "uvicorn 0.54.0, config.proxy_headers=True, forwarded_allow_ips='127.0.0.1,::1'. The control without XFF through the proxy returned [401,401,401,401,401,429,429], so the throttle works when the key is the real peer. With a rotating XFF through the same proxy, all 30 wrong guesses returned 401 with no 429, which is above both per_account=5 and per_ip=20. The correct password afterwards returned 200. The throttle table held keys like 'acct:203.0.113.10|owner@example.test' and no 'ip:127.0.0.1' entry, confirming the client-chosen XFF value was used as the key."
+  },
+  "remediation": {
+   "strategy": "Do not let a client-supplied X-Forwarded-For become the throttle identity. The narrowest source fix is to turn off uvicorn proxy-header trust in main.py's uvicorn.Config unless an operator opts in explicitly, and to require them to name the trusted proxy when they do. All --dev-ui traffic then counts against the real peer (127.0.0.1) instead of a value the attacker can rotate. Optionally, also stop the dev proxy from forwarding client X-Forwarded-For, and fix the misleading comment in core/throttle.py.",
+   "code_changes": [
+    {
+     "file_name": "main.py",
+     "fixed_code": "    config = uvicorn.Config(\n        app, host=cfg.APP_HOST, port=cfg.APP_PORT, log_level=\"warning\",\n        # Trust X-Forwarded-* only when an operator explicitly fronts this with a\n        # reverse proxy that strips client-supplied copies. Off by default so the\n        # --dev-ui Next proxy (which relays client headers verbatim) cannot forge\n        # request.client.host, which core/throttle.py keys the login limits on.\n        proxy_headers=os.getenv(\"TRUST_PROXY_HEADERS\", \"false\").lower() == \"true\",\n        forwarded_allow_ips=os.getenv(\"FORWARDED_ALLOW_IPS\", \"\"),\n    )"
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "medium",
+    "reason": "Requires --dev-ui mode, which is documented as a development convenience. In that mode, `next dev` listens on all interfaces by default, and any non-browser client that can reach :3000 can set the header trivially with no authentication."
+   },
+   "impact": {
+    "score": "medium",
+    "reason": "Removes the only brute-force and password-spray control on login and password change, allowing unlimited online password guessing against the owner and other accounts. Account compromise still depends on the password being guessable."
+   },
+   "overall_severity": "medium"
+  },
+  "confidence": {
+   "score": "high",
+   "reason": "Reproduced end to end in the sandbox with the real app, main.py's exact uvicorn.Config, and the shipped Next 16.3.7 proxyRequest/httpxy code. The no-XFF control throttled after 5 attempts, while 30 rotating-XFF attempts were never throttled and the correct password was then accepted. Only the Next routing code before proxyRequest was verified from source rather than executed: it has no middleware and does not mutate x-forwarded-for, and base-server's `??=` would keep a client value even if it ran."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "db/resumes_db.py:extract_text+core/resume_parser.py:_extract_text:unbounded-pdf-stream-decompression",
+  "title": "Resume text extraction decodes PDF content streams with no limit on decoded size",
+  "description": "Any signed-in user (including a non-owner when ALLOW_SIGNUP=true, and via /api/setup/upload-resume per the access-control finding) can upload a small PDF whose FlateDecode content stream expands enormously. The server decodes the compressed stream with no bound on decoded size or object count. The 5 MB transfer cap (check_pdf) and the 4-page/6000-character caps act only on the compressed transfer and on the final text, after full decoding. A bounded local measurement confirms the amplification: a 510,229-byte PDF (within the 5 MB cap, valid %PDF- signature) drove db.resumes_db.extract_text to a peak RSS of ~536 MiB (about 500 MiB of transient allocation, ~1100x the file size) in 1.5 s, returning empty text with no exception. The single server process's memory and CPU are shared by all users.",
+  "claimed_root_cause": "db/resumes_db.extract_text and core/resume_parser._extract_text call pdfplumber/pdfminer, whose FlateDecode path calls zlib.decompress with no max_length (pdfminer/pdftypes.py:328) and lays out each page in full before truncating. No decoded-byte or object-count budget sits between the 5 MB transfer check (check_pdf, len(data) > MAX_BYTES) and the parser, and the broad except Exception swallows MemoryError, so the request returns normally.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "server/routes/kits.py",
+    "line": 50,
+    "scope": "upload_resume",
+    "description": "A signed-in user POSTs a multipart PDF to /api/resumes. The only size gate is file.read(MAX_BYTES + 1) at line 56 (5 MB) plus the %PDF- signature check, both on the still-compressed bytes."
+   },
+   {
+    "kind": "propagation",
+    "file": "db/resumes_db.py",
+    "line": 200,
+    "scope": "ResumeStore.add",
+    "description": "After check_pdf validates only transfer size and signature (line 190 -> 93), extract_text(bytes(data)) runs in a worker thread (kits.py:58 asyncio.to_thread)."
+   },
+   {
+    "kind": "sink",
+    "file": "db/resumes_db.py",
+    "line": 143,
+    "scope": "extract_text",
+    "description": "pdfplumber/pdfminer fully decodes up to TEXT_PAGES=4 pages; pdfminer FlateDecode calls zlib.decompress with no max_length, so a highly compressible stream expands unbounded in server memory before the 6000-character cap is applied at line 144."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "db/resumes_db.py",
+    "line": 93,
+    "description": "The only size check is len(data) > MAX_BYTES, applied to the compressed upload (MAX_BYTES = 5 MB)."
+   },
+   {
+    "file": "db/resumes_db.py",
+    "line": 143,
+    "description": "Each of up to 4 pages is decoded and laid out in full (p.extract_text()) before any decoded-size bound; the compressed content stream is fully inflated here. Local measurement: a 510,229-byte PDF reached ~536 MiB peak RSS (~500 MiB transient, ~1100x the file)."
+   },
+   {
+    "file": "db/resumes_db.py",
+    "line": 144,
+    "description": "The TEXT_CHARS=6000 truncation is applied only after full extraction, so it does not bound decode-time memory."
+   },
+   {
+    "file": "db/resumes_db.py",
+    "line": 145,
+    "description": "The broad except Exception swallows MemoryError (a subclass of Exception); extract_text returns '' and the upload answers HTTP 200, hiding the failure. Confirmed locally: the overflow case returns empty text rather than raising."
+   },
+   {
+    "file": "core/resume_parser.py",
+    "line": 80,
+    "description": "_extract_text iterates every page with no page, character or decoded-size cap. Reached from POST /api/setup/upload-resume (onboarding.py:54 parse)."
+   },
+   {
+    "file": "server/routes/onboarding.py",
+    "line": 48,
+    "description": "shutil.copyfileobj copies the whole upload into cfg.RESUME_PATH with no app-level size cap, then parse() runs synchronously on the event loop over all pages."
+   }
+  ],
+  "blockers": [
+   "Whether this is a meaningful denial of service for other users rather than the graceful self-recovery observed depends on the deployed host's RAM, swap, kernel overcommit and OOM-killer target selection, the asyncio.to_thread pool concurrency, and any reverse-proxy request-body cap (the /api/setup/upload-resume path has no app-level cap at all) — none of which are visible in the repository.",
+   "Observed recovery for a single request is graceful: at the 1 GiB address-space limit the MemoryError raised by decompression is swallowed by extract_text's broad except Exception (db/resumes_db.py:145), so the worker thread returns '' and the request answers HTTP 200 with empty stored text. Whether an attacker can instead exhaust host memory enough for the OS to kill the single uvicorn process (APP_HOST 127.0.0.1:8000, one process) and so take down all users cannot be established from source."
+  ],
+  "validation_plan": {
+   "local": "Completed in the parent-approved sandbox (1 GiB address-space limit, uid nobody, no network, read-only target copy, scratch-only writes). A benign, highly-compressible single-page PDF of 510,229 bytes (valid %PDF- signature; passes db.resumes_db.check_pdf; well under the 5 MB cap) was fed to the exact repository sink db.resumes_db.extract_text. Observation (first and only, not scaled up): peak RSS rose from 35.4 MiB baseline to 536.1 MiB (growth 501.5 MiB, ~1100x the uploaded file), elapsed 1.5 s, result returned empty text with no exception (MemoryError path confirmed swallowed in an earlier over-limit build). The content stream decompressed to 524,288,044 bytes from a 509,651-byte compressed stream (~1028x). Promoted evidence file: work/evidence/pdf_decompress_measurement.json (688 bytes). Remaining non-destructive local check for an owner: measure a single upload at the 5 MB cap (expected decoded size ~5 GB at this ratio) and a small fixed number of concurrent uploads under the deployment's real memory/thread limits; use strict resource limits and do not run saturation or production load.",
+   "deployment": "The owner checks whether the server process runs under a memory cgroup or ulimit, the host RAM/swap and kernel overcommit/OOM-killer configuration (whether the uvicorn process would be the OOM victim), the asyncio default thread-pool size, and whether a reverse proxy caps request bodies (especially for the uncapped /api/setup/upload-resume path). No test against the live server is needed."
+  }
+ },
+ {
+  "verdict": "confirmed",
+  "fingerprint": "intelligence/scorer.py:score_job:llm-failure-fallback-score-50-passes-autonomy-min-score",
+  "title": "Failed LLM scoring is stored as a real score of 50, so it passes the quality gate and autonomy min_score rules",
+  "description": "When LLM scoring fails, score_job returns a made-up score of 50 with the reason 'Scoring failed — kept for manual review'. The failure can be a provider error, invalid JSON after the one repair retry, a NaN or non-numeric score, or a non-object reply. If the score key is missing, score_job also uses 50 but keeps the model's own reason text. score_jobs_batch writes that 50 to jobs.ai_score through update_score, and the row then looks the same as a real score. Two gates are meant to stop jobs with no score: quality_gate (the 'not_scored' reason) and the autonomy min_score condition (the docstring says 'an unscored job fails'). Neither ever sees None. So the queue gate (threshold 30 by default) and any enabled autonomy rule with min_score <= 50 treat the job as scored and good enough. The hardcoded auto_skip False also skips the auto-skip threshold that a real score of 50 would face. If every other rule condition holds, consider_auto_approval approves the application and Orchestrator._after_review submits it in the owner's name, without the manual review the stored reason promises.",
+  "root_cause": "score_job's except block, and the default in int(result.get(\"score\", 50)), replace an unknown score with the fixed value 50 and auto_skip False. score_jobs_batch then saves it as a real score through update_score. ai_score has no separate failed or unknown state, so the controls that reject unscored jobs (rule_failures with ai_score None, quality_gate's not_scored) never fire. This contradicts score_jobs_batch's own docstring, which says unscored jobs are left NULL 'rather than a fake score'.",
+  "intended_behavior": "A job whose scoring failed, or that got no valid finite numeric score, should keep ai_score NULL (or carry an explicit scoring-failed flag). quality_gate would then reject it as not_scored and every autonomy min_score rule would refuse it, leaving the job for a person, as the autonomy docstring and the fallback reason both say.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "server/routes/jobs.py",
+    "line": 46,
+    "scope": "run_pipeline",
+    "description": "The owner (require_owner) starts the pipeline. It inserts the scraped jobs and calls score_jobs_batch on the new ones (tracking/pipeline.py:122)."
+   },
+   {
+    "kind": "propagation",
+    "file": "intelligence/scorer.py",
+    "line": 154,
+    "scope": "score_job",
+    "description": "int(result.get(\"score\", 50)) turns a missing score into 50. NaN, non-numeric values and non-dict replies raise inside the try block."
+   },
+   {
+    "kind": "propagation",
+    "file": "intelligence/scorer.py",
+    "line": 167,
+    "scope": "score_job",
+    "description": "The except block returns score 50 and auto_skip False with the reason 'Scoring failed — kept for manual review'."
+   },
+   {
+    "kind": "propagation",
+    "file": "intelligence/scorer.py",
+    "line": 307,
+    "scope": "score_jobs_batch",
+    "description": "jobs_db.update_score stores 50 as the job's ai_score, the same as a real score."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/queue_worker.py",
+    "line": 112,
+    "scope": "quality_gate",
+    "description": "50 is at or above the threshold (30 by default), so the job passes when the owner queues it (queue_worker.py:167) and again when the worker picks it up (queue_worker.py:321)."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/autonomy.py",
+    "line": 81,
+    "scope": "rule_failures",
+    "description": "The None check never fires: ai_score 50 meets any rule with min_score <= 50."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/autonomy.py",
+    "line": 228,
+    "scope": "consider_auto_approval",
+    "description": "The pending attempt is closed as auto_approved, the step is logged and the matching rule is returned."
+   },
+   {
+    "kind": "sink",
+    "file": "applier/session.py",
+    "line": 749,
+    "scope": "Orchestrator._after_review",
+    "description": "self.submit(None, emit, actor=\"autonomy\") submits the application without a human review."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "intelligence/scorer.py",
+    "line": 167,
+    "description": "The failure fallback returns a fixed score of 50 with auto_skip False instead of None."
+   },
+   {
+    "file": "intelligence/scorer.py",
+    "line": 154,
+    "description": "A missing score key becomes 50, and the model's own reason text is kept."
+   },
+   {
+    "file": "intelligence/scorer.py",
+    "line": 307,
+    "description": "The fallback score is stored as ai_score through update_score."
+   },
+   {
+    "file": "intelligence/scorer.py",
+    "line": 204,
+    "description": "The batch docstring promises that unscored jobs keep ai_score None 'rather than a fake score'."
+   },
+   {
+    "file": "applier/autonomy.py",
+    "line": 13,
+    "description": "Documented invariant: the min_score condition fails for an unscored job."
+   },
+   {
+    "file": "applier/autonomy.py",
+    "line": 81,
+    "description": "rule_failures treats only None as unscored."
+   },
+   {
+    "file": "applier/queue_worker.py",
+    "line": 109,
+    "description": "quality_gate rejects only None as not_scored."
+   },
+   {
+    "file": "core/llm.py",
+    "line": 110,
+    "description": "chat_json raises ValueError after the one JSON-repair retry, and that lands in the scorer's fallback."
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "system_configuration",
+    "description": "The owner has turned on enable_llm_scoring (off by default) and the autonomy kill switch (off by default). The owner has an enabled rule for the site type or '*' with min_score <= 50 (the UI default for a new rule is 70). The auto-skip and quality threshold is <= 50 (default 30)."
+   },
+   {
+    "kind": "data_state",
+    "description": "The rule's ledger conditions are met: at least min_attempts human-reviewed attempts (UI default 20) and the success rate. If require_all_answers_known is set (the default), every review-packet field must come from the answer bank or profile at confidence >= 0.9. max_per_day and the daily apply limit must have room."
+   },
+   {
+    "kind": "user_interaction",
+    "description": "The owner queued the job, an owner-only action. The UI shows its score as 50, and the side panel shows the reason 'Scoring failed — kept for manual review' (except when the score key was missing)."
+   },
+   {
+    "kind": "third_party_dependency",
+    "description": "LLM scoring fails for that job: a provider error, invalid JSON twice, or a reply without a valid numeric score."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "No attacker principal is needed or gains anything. A dependency failure, such as a provider outage or a malformed model reply, makes an owner-configured autonomy safety condition fail open. Scraped job text could provoke a malformed reply, but it could just as well push the model to a high score directly, so the fallback gives an adversary nothing extra. This is a fail-open safety-control defect, not a crossed principal boundary.",
+   "payloads": [
+    "LLM.chat_json mocked to raise RuntimeError('LLM call failed (dummy): 503')",
+    "LLM.chat_json mocked to raise ValueError('LLM returned invalid JSON: dummy')",
+    "LLM.chat_json mocked to return json.loads('{\"score\": NaN, \"reason\": \"r\"}')",
+    "LLM.chat_json mocked to return {\"reason\": \"no score key\"}",
+    "LLM.chat_json mocked to return [\"not\",\"a\",\"dict\"]",
+    "Autonomy rule {\"site_type\":\"*\",\"min_score\":50,\"max_per_day\":5,\"min_attempts\":1,\"min_success_rate\":0.9,\"require_all_answers_known\":false}"
+   ],
+   "instructions": [
+    "Copy the source to the verifier scratch and run it in the sandbox: no network, uid nobody, empty env except dummy APP_ENCRYPTION_KEY and APP_SECRET_KEY, prlimit. Use a temp jobs.db per mode. Add one dummy greenhouse job and one control job through an unscoped JobsDB, as tracking/pipeline.py does.",
+    "Patch scorer._llm_scoring_enabled to True and _auto_skip_threshold to 30. Use settings quality_first=true, dry_run=true and auto_skip_score_threshold=30. Mock LLM.chat_json for each failure mode and call score_jobs_batch([job], profile, jobs_db=db).",
+    "Read the rows back through JobsDB(user_id=1). Call queue_worker.quality_gate and queue_jobs on both jobs.",
+    "Turn on AutonomyStore(1), add the rule above, and seed one approved_unchanged greenhouse attempt. Call autonomy.record_review_reached and then consider_auto_approval in dry run, which makes no submission. Do the same for the never-scored control job. As a positive control, also run a mode where the mock returns a real score of 20.",
+    "Harness output is in work/evidence/v14_scorer_failopen.json (scratch-relative, to be promoted by the parent)."
+   ],
+   "observed_result": "In all 5 failure modes the stored ai_score was 50 and the job stayed in stage found. The reason was 'Scoring failed — kept for manual review', except for the missing-key mode, which kept the model's reason. quality_gate returned None, queue_jobs queued the job, and consider_auto_approval returned rule id 1 (auto-approved, dry run). The never-scored control job (ai_score NULL) was rejected as not_scored and refused by autonomy (None). A real score of 20 was auto-skipped, rejected below_threshold and refused by autonomy."
+  },
+  "remediation": {
+   "strategy": "Make scoring failures fail closed. score_job should return score None plus a failed flag when the call raises, or when the reply is not a dict with a finite numeric, non-bool score (check with math.isfinite before clamping). score_jobs_batch should then skip update_score, or store NULL with a failure reason, so quality_gate returns not_scored and rule_failures refuses the job. Regression test: with chat_json raising or returning no or an invalid score, ai_score stays NULL, quality_gate returns not_scored, and consider_auto_approval returns None.",
+   "code_changes": [
+    {
+     "file_name": "intelligence/scorer.py",
+     "fixed_code": "        raw = result.get(\"score\") if isinstance(result, dict) else None\n        if isinstance(raw, bool) or not isinstance(raw, (int, float)) or not math.isfinite(raw):\n            raise ValueError(\"LLM returned no valid score\")\n        score = max(0, min(100, int(raw)))\n        ...\n    except Exception as e:\n        logger.warning(f\"  [Scorer] Failed for {job.get('title','?')}: {e}\")\n        return {\"score\": None, \"reason\": \"Scoring failed — kept for manual review\",\n                \"pros\": [], \"cons\": [], \"auto_skip\": False, \"failed\": True}\n\n# in score_jobs_batch:\n            if scored is None or scored.get(\"failed\"):\n                results.append(job)   # stays unscored (ai_score NULL)\n                continue"
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "low",
+    "reason": "Several owner opt-ins must all hold: LLM scoring, the autonomy kill switch, a rule with min_score <= 50 (the UI suggests 70) and an established human-reviewed ledger (UI default 20 attempts). The owner must also have queued that specific job, and scoring for that job must have failed."
+   },
+   "impact": {
+    "score": "low",
+    "reason": "An application to a job the owner explicitly queued can be submitted in their name without the per-application review that the documented invariant and the stored reason promise. No other principal's data or authority is involved, and an adversary gains nothing beyond what direct score injection already gives. The deterministic controls still bound it: owner-only queueing, the kill switch, the ledger, answers_known (on by default), max_per_day, the daily cap of 10 under quality_first, and dry_run."
+   },
+   "overall_severity": "low"
+  },
+  "confidence": {
+   "score": "high",
+   "reason": "Every trace line was re-read in source, and an independent sandboxed run of the real scorer, queue and autonomy code showed the fallback score passing both gates in all five failure modes, while the unscored and low-score controls were refused."
+  }
+ },
+ {
+  "verdict": "confirmed",
+  "fingerprint": "server/routes/apply.py:apply-status-and-screenshots-missing-job-ownership",
+  "title": "Any signed-in user can read the owner's apply session JSON and filled-form screenshots",
+  "description": "GET /api/apply/status/{job_id} loads the global data/sessions/<job_id>.json and does not check that the caller owns the job. Job ids are deterministic and can be computed offline from a public job-posting URL. Jobs created by the production pipeline (tracking/pipeline.py, which uses an unscoped JobsDB()) get id sha256(<normalized url>)[:16] with no user component; those rows are later adopted by user 1. Jobs created through a scoped JobsDB(user_id=N).add get sha256('<N>:<normalized url>')[:16]. Either way a non-owner can compute the owner's job id from the posting URL. The response is the whole session: the answers the owner typed for that application (missing-field answers are stored in application_answers, applier/session.py:307), the missing-field prompts, the fill log and the absolute screenshot paths. The /screenshots StaticFiles mount then serves those full-page filled-form PNGs to any signed-in session, with no per-user check. For the same id and the same non-owner, the per-user routes GET /api/jobs/{id} and GET /api/applications/{id}/review return 404.",
+  "root_cause": "In server/routes/apply.py, status() declares no user dependency and never calls _get_job(job_id, uid) before ApplicationSession.load(job_id). server/app.py mounts data/screenshots as a plain StaticFiles directory, so only the global session gate protects it. Both derived copies are keyed only by job_id and are never bound to JobsDB(user_id=uid).",
+  "intended_behavior": "A session or screenshot is served only when JobsDB(user_id=uid).get_by_id(job_id) resolves for the caller, as /api/stats, /api/jobs/{id} and the review routes already require. Otherwise the response is 404.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "server/routes/apply.py",
+    "line": 110,
+    "scope": "status",
+    "description": "GET /api/apply/status/{job_id} takes the job_id from the path and has no uid dependency or ownership check. The only control on the path is the global session gate."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/session.py",
+    "line": 96,
+    "scope": "ApplicationSession.load",
+    "description": "Opens the global cfg.SESSIONS_DIR/<job_id>.json for any id, with no user scoping."
+   },
+   {
+    "kind": "propagation",
+    "file": "applier/session.py",
+    "line": 141,
+    "scope": "ApplicationSession.to_dict",
+    "description": "asdict(self) returns the whole session: application_answers, missing_prompts, log and absolute screenshot paths."
+   },
+   {
+    "kind": "propagation",
+    "file": "tracking/pipeline.py",
+    "line": 110,
+    "scope": "run",
+    "description": "The only production job writer calls add() on an unscoped JobsDB() (created at line 50), so the row is stored with user_id NULL and later adopted by user 1 (db/jobs_db.py:284)."
+   },
+   {
+    "kind": "propagation",
+    "file": "db/jobs_db.py",
+    "line": 386,
+    "scope": "JobsDB._job_id",
+    "description": "The job id is sha256(normalized url)[:16] when the writer is unscoped (the pipeline), or sha256('<uid>:<normalized url>')[:16] when it is scoped. Both are deterministic and can be computed from a public posting URL."
+   },
+   {
+    "kind": "sink",
+    "file": "server/app.py",
+    "line": 107,
+    "scope": "create_app /screenshots mount",
+    "description": "StaticFiles serves any file in data/screenshots to any signed-in session, including the basename leaked by the status response."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "server/routes/apply.py",
+    "line": 50,
+    "description": "The _get_job(job_id, uid) ownership helper exists and start/answer use it, but status() does not."
+   },
+   {
+    "file": "server/routes/jobs.py",
+    "line": 32,
+    "description": "/api/stats filters the global session files to the caller's job ids ('Session files are global; count only the ones for this user's jobs'). This states the intended per-user policy."
+   },
+   {
+    "file": "server/routes/review.py",
+    "line": 64,
+    "description": "The review view resolves the job and packet per uid and links /screenshots/<name>, but the mount it links to is unscoped."
+   },
+   {
+    "file": "applier/session.py",
+    "line": 307,
+    "description": "Answers the owner types for missing fields are stored in session.application_answers, so the leaked JSON carries real per-application answers."
+   },
+   {
+    "file": "applier/screenshotter.py",
+    "line": 16,
+    "description": "Server-side screenshot names are {job_id}_{label}_{HHMMSS}.png. They are low entropy even without the status leak."
+   },
+   {
+    "file": "db/jobs_db.py",
+    "line": 284,
+    "description": "Unowned (pipeline-created) rows are adopted by user 1 without changing their URL-only job_id."
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "system_configuration",
+    "description": "ALLOW_SIGNUP=true (server/routes/auth.py:44), so a second account can exist."
+   },
+   {
+    "kind": "authentication_level",
+    "description": "Any signed-in non-owner session. Anonymous callers get 401 on the API and 303 on /screenshots."
+   },
+   {
+    "kind": "data_state",
+    "description": "The owner has an apply session for a job whose public posting URL the attacker knows or guesses."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "A signed-in non-owner (user id 2) who knows a public job URL the owner (user id 1) applied to",
+   "payloads": [
+    "job_id = sha256(JobsDB._norm_url(url).encode()).hexdigest()[:16]  (pipeline-created jobs)",
+    "job_id = sha256(('1:' + JobsDB._norm_url('https://www.linkedin.com/jobs/view/9876543210/')).encode()).hexdigest()[:16]  (scoped add, as reproduced)",
+    "GET /api/apply/status/{job_id}",
+    "GET /screenshots/{basename of screenshots[0]}"
+   ],
+   "instructions": [
+    "Copy the source into the sandbox scratch. Point cfg.JOBS_DB_PATH, UsersDB and SettingsDB at temp files and set ALLOW_SIGNUP=True, COOKIE_SECURE=False and a dummy APP_SECRET_KEY of 32+ characters. Then build create_app(ui_dir=<nonexistent>) with TestClient, as tests/test_http_auth.py setUp does.",
+    "Sign up an owner (id 1) and a second user (id 2) on separate clients.",
+    "As the trusted harness, run JobsDB(user_id=1).add for a dummy LinkedIn URL. Write a dummy PNG to cfg.SCREENSHOTS_DIR/<job_id>_filled_101500.png. Save an ApplicationSession for the job with that screenshot path, application_answers {'expected salary': 'V04-DUMMY-1234'} and a dummy log line.",
+    "As user 2, compute the id from the URL alone, then GET /api/apply/status/{id} and GET /screenshots/<basename>. As user 2, also GET /api/jobs/{id} and /api/applications/{id}/review. Anonymously, GET both the status endpoint and the screenshot.",
+    "The script is scratch work/scripts/repro.py. Its output is predeclared for promotion at work/evidence/v04_status_screenshot_nonowner.json."
+   ],
+   "observed_result": "The computed id 4736df4f1bef05c6 equals the owner's job id. As user 2, GET /api/apply/status/4736df4f1bef05c6 returned 200 with the owner's session. It contained application_answers {'expected salary': 'V04-DUMMY-1234'}, the dummy log line and the absolute screenshot path. GET /screenshots/4736df4f1bef05c6_filled_101500.png returned 200 with exactly the dummy PNG bytes. As user 2, /api/jobs/{id} and /api/applications/{id}/review both returned 404. As the owner, /api/jobs/{id} returned 200. Anonymous callers got 401 on status and 303 on the screenshot."
+  },
+  "remediation": {
+   "strategy": "Bind every derived copy to the job owner. status() should require a session user and call _get_job(job_id, uid) before loading the session. Replace the /screenshots StaticFiles mount with a route that takes a single basename, reads the job-id prefix (16 hex characters for both the server and runner naming schemes), checks JobsDB(user_id=uid).get_by_id and serves the file only from inside SCREENSHOTS_DIR. Add a regression test that a second user gets 404 on both paths.",
+   "code_changes": [
+    {
+     "file_name": "server/routes/apply.py",
+     "fixed_code": "@router.get(\"/api/apply/status/{job_id}\")\nasync def status(job_id: str, uid: int = Depends(get_current_user_id)):\n    from applier.session import ApplicationSession\n    _get_job(job_id, uid)\n    s = ApplicationSession.load(job_id)\n    if not s:\n        raise HTTPException(404, \"No session\")\n    return JSONResponse(s.to_dict())"
+    },
+    {
+     "file_name": "server/app.py",
+     "fixed_code": "# remove app.mount(\"/screenshots\", StaticFiles(...)) and add:\n@app.get(\"/screenshots/{name}\")\nasync def screenshot(name: str, request: Request):\n    from fastapi.responses import FileResponse\n    from db.jobs_db import JobsDB\n    uid = getattr(request.state, \"user_id\", None)\n    job_id = name.split(\"_\", 1)[0]\n    if (uid is None or \"/\" in name or \"\\\\\" in name or not name.endswith(\".png\")\n            or not JobsDB(user_id=uid).get_by_id(job_id)):\n        return JSONResponse({\"detail\": \"Not found\"}, status_code=404)\n    path = ss_dir / name\n    return FileResponse(path) if path.is_file() else JSONResponse({\"detail\": \"Not found\"}, status_code=404)"
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "low",
+    "reason": "Requires ALLOW_SIGNUP=true, a second account, and knowledge of a public posting URL the owner applied to. Once the URL is known, the id needs no further guessing (for pipeline-created jobs it is not even salted by user id)."
+   },
+   "impact": {
+    "score": "medium",
+    "reason": "Read-only disclosure of the owner's per-application answers, fill logs and full-page filled-form screenshots, which contain the owner's PII. No modification."
+   },
+   "overall_severity": "medium"
+  },
+  "confidence": {
+   "score": "high",
+   "reason": "Every trace line was re-read in source, and the result was reproduced independently end to end in the sandbox with dummy principals and data. The sibling per-user routes refused the same id, so no other layer enforces ownership. The unscoped-pipeline id derivation is directly visible in db/jobs_db.py:383-386 and tracking/pipeline.py:50/110."
+  }
+ },
+ {
+  "verdict": "confirmed",
+  "fingerprint": "server/routes/apply.py:get_limits:unscoped-JobsDB-cross-user-count",
+  "title": "GET /api/apply/limits shows non-owner users the owner's application count and last-apply timing",
+  "description": "GET /api/apply/limits needs only a valid session. It has no require_owner and no get_current_user_id dependency. The route builds an unscoped JobsDB(), so count_applied_today() and get_last_applied_at() run over every user's rows. On a multi-user install (ALLOW_SIGNUP=true), any signed-in non-owner can read how many applications the owner submitted today. For the min_delay window after the owner's latest submission (45 s by default), the caller can also read wait_seconds, which tells it how long ago that submission happened. The same route returns the owner's machine-wide settings (daily_limit, min_delay, dry_run). The caller's own scoped views (/api/stats and /api/queue/status, which use JobsDB(user_id=uid)) correctly show 0 for that caller, and the owner's job itself returns 404 to them. _enforce_rate_limits (line 216) has the same unscoped construction, but it is reached only from the require_owner submit route, so it discloses nothing to non-owners.",
+  "root_cause": "In server/routes/apply.py, get_limits (line 269: `jobs_db  = JobsDB()`) builds the jobs view with no user_id. JobsDB._and (db/jobs_db.py:155) then returns an empty filter, so the COUNT and MAX(applied_at) queries (db/jobs_db.py:660, 671) cover every tenant's rows. The result is returned to any session holder.",
+  "intended_behavior": "db/jobs_db.py:23-31 describes JobsDB() with no user_id as legacy single-user mode that 'has NOT been migrated to per-user isolation'. Per-user job data, and anything derived from it, should be read through JobsDB(user_id=uid), as /api/queue/status (server/routes/queue.py:98-99) and /api/stats already do. Either this route should be owner-only, since only the owner can submit (submit uses require_owner at apply.py:158), or it should return the caller's own scoped numbers.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "server/routes/apply.py",
+    "line": 263,
+    "scope": "get_limits",
+    "description": "`async def get_limits():` (registered by @router.get(\"/api/apply/limits\") at line 262). It has no require_owner or user dependency, so only the global session gate applies: anonymous callers get 401 and any signed-in user gets 200."
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/apply.py",
+    "line": 269,
+    "scope": "get_limits",
+    "description": "jobs_db = JobsDB() is built with user_id None (unscoped legacy view)."
+   },
+   {
+    "kind": "propagation",
+    "file": "db/jobs_db.py",
+    "line": 155,
+    "scope": "JobsDB._and",
+    "description": "Returns (\"\", ()) when user_id is None, so the queries that follow add no user filter."
+   },
+   {
+    "kind": "sink",
+    "file": "server/routes/apply.py",
+    "line": 290,
+    "scope": "get_limits response",
+    "description": "applied_today, computed over all users' rows, goes back in the JSON response. wait_seconds (line 293, derived at line 284 from the global last applied_at) goes back with it."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "server/routes/apply.py",
+    "line": 277,
+    "description": "applied_today = jobs_db.count_applied_today() on the unscoped view."
+   },
+   {
+    "file": "server/routes/apply.py",
+    "line": 278,
+    "description": "last_applied = jobs_db.get_last_applied_at() on the unscoped view; it feeds wait_seconds at line 284."
+   },
+   {
+    "file": "db/jobs_db.py",
+    "line": 660,
+    "description": "SELECT COUNT(*) FROM jobs WHERE applied_at LIKE today plus the user filter, which is empty here."
+   },
+   {
+    "file": "db/jobs_db.py",
+    "line": 671,
+    "description": "SELECT MAX(applied_at) FROM jobs WHERE applied_at != '' plus the empty user filter."
+   },
+   {
+    "file": "server/routes/queue.py",
+    "line": 99,
+    "description": "Comparable scoped route: /api/queue/status passes JobsDB(user_id=uid), so the caller sees only their own applied_today."
+   },
+   {
+    "file": "server/routes/apply.py",
+    "line": 216,
+    "description": "_enforce_rate_limits has the same unscoped JobsDB() (same root cause). Its only caller is submit (line 178), which uses require_owner (line 158), so it discloses nothing to non-owners."
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "system_configuration",
+    "description": "ALLOW_SIGNUP=true (or a second account exists), so that a non-owner account can sign in."
+   },
+   {
+    "kind": "authentication_level",
+    "description": "Any valid non-owner session. No owner role is needed; anonymous requests get 401."
+   },
+   {
+    "kind": "data_state",
+    "description": "The owner has submitted applications today, or recently for wait_seconds to be non-zero, which needs the request to fall inside the min_delay window (45 s by default)."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "A signed-in non-owner account (id 2) on a multi-user install.",
+   "payloads": [
+    "owner signs up first (id 1); set ALLOW_SIGNUP=true; bob signs up (id 2, owner:false)",
+    "three dummy jobs added for the owner via JobsDB(user_id=1).add, then the owner calls POST /api/applications/{id}/transition {\"to\":\"submitted\"} for each",
+    "bob: GET /api/apply/limits"
+   ],
+   "instructions": [
+    "Copy the target to scratch and run /mnt/work/v05_limits.py inside sbx.sh with a fresh APP_ENCRYPTION_KEY and a 40+ char dummy APP_SECRET_KEY. The script uses FastAPI TestClient against create_app with temp users/settings/jobs DBs, mirroring tests/test_http_auth.py setUp.",
+    "Compare bob's /api/apply/limits before and after the owner's submissions with bob's own /api/stats and /api/queue/status. Confirm bob gets 404 for the owner's application and an anonymous client gets 401.",
+    "Evidence file: work/evidence/v05_apply_limits_cross_user.json (promoted to agents/v05/artifacts/work/evidence/v05_apply_limits_cross_user.json)."
+   ],
+   "observed_result": "bob before: /api/apply/limits applied_today 0, wait_seconds 0. After the owner's three submissions, bob's GET /api/apply/limits returns 200 {daily_limit:10, applied_today:3, daily_limit_reached:false, min_delay:45, wait_seconds:44, dry_run:false}, identical to the owner's response. bob's /api/stats applied_today is 0, bob's /api/queue/status applied_today is 0, bob's GET /api/applications/<owner job> returns 404, and an anonymous GET /api/apply/limits returns 401."
+  },
+  "remediation": {
+   "strategy": "Since only the owner can submit and the limits describe the owner's machine-wide applying, put GET /api/apply/limits behind require_owner. Alternatively, scope both readers to the session user. For consistency, also scope _enforce_rate_limits to the submitting uid; this is equivalent for the owner, because NULL legacy rows are adopted by user 1 (db/jobs_db.py:284).",
+   "code_changes": [
+    {
+     "file_name": "server/routes/apply.py",
+     "fixed_code": "@router.get(\"/api/apply/limits\")\nasync def get_limits(uid: int = Depends(require_owner)):\n    ...\n    jobs_db = JobsDB(user_id=uid)\n    ...\n\ndef _enforce_rate_limits(uid: int):\n    ...\n    jobs_db = JobsDB(user_id=uid)   # called as _enforce_rate_limits(uid) from submit()"
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "medium",
+    "reason": "It takes one GET from any non-owner session, but it needs a multi-user install with ALLOW_SIGNUP=true. The timing signal exists only inside the short min_delay window."
+   },
+   "impact": {
+    "score": "low",
+    "reason": "It leaks only aggregate metadata about the owner's job-search activity (applications today, and recency of the latest one within the min-delay window) plus the owner's limit and dry-run settings. It exposes no job contents, PII or secrets, and allows no change."
+   },
+   "overall_severity": "low"
+  },
+  "confidence": {
+   "score": "high",
+   "reason": "Source shows the unscoped query with no route-level owner or user dependency. An independent sandboxed TestClient run with two dummy users showed the non-owner's response change from 0 to the owner's count of 3, with wait_seconds 44, while the non-owner's scoped views stayed at 0."
+  }
+ },
+ {
+  "verdict": "confirmed",
+  "fingerprint": "server/routes/ghostwriter.py:_get_job_and_profile:unscoped-JobsDB-global-ProfileDB-no-owner-check",
+  "title": "Ghostwriter routes let any signed-in non-owner read the owner's job data and profile PII and spend the owner's LLM key",
+  "description": "The four /api/ghostwriter/* routes (cover-letter, interview-prep, chat, context) check only that a session exists, through the global auth-gate middleware. None of them declares a Depends identity or owner dependency. _get_job_and_profile loads the job with an unscoped JobsDB(), which applies no user filter, and always reads the owner's single global ProfileDB().summary(). A non-owner account, which can exist only when ALLOW_SIGNUP=true, can call GET /api/ghostwriter/context/{job_id} with another user's job id. The response contains that job's title, company, location, URL, description, brief, tailored summary and skills. It also contains the owner's name, role, experience, location, education, summary, LinkedIn, GitHub and portfolio URLs. The owner's profile appears even when the caller passes their own job id. The chat, cover-letter and interview-prep routes run LLM calls with that context through core.llm.chat or chat_json, which use the single global provider configuration and key from SettingsDB, so the non-owner spends the owner's key. The same caller gets 404 from GET /api/jobs/{owner job id} and 403 from POST /api/kits/{owner job id}/regenerate. Scoped job ids are sha256('<uid>:<normalized url>')[:16], so the owner's job ids can be computed from public posting URLs.",
+  "root_cause": "server/routes/ghostwriter.py:_get_job_and_profile (lines 27-33) builds JobsDB() without user_id. Its _and() and _where() helpers then return empty filters (db/jobs_db.py:155-159), so get_by_id matches any user's row. The function then returns the machine-wide owner profile from ProfileDB().summary(). The route handlers at lines 70-129 have no Depends(get_current_user_id) or Depends(require_owner). The only control is the global session gate, so the request runs as the owner's data and the owner's LLM credential whoever the caller is.",
+  "intended_behavior": "Ghostwriter should act only on the caller's own job, through JobsDB(user_id=uid). Because it reads the owner's single global profile and spends the owner's global LLM key, it should be owner-only, like kits regenerate (Depends(require_owner)). The alternative is to give non-owners no profile, as intelligence/prep.py load_owner_profile does.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "server/routes/ghostwriter.py",
+    "line": 122,
+    "scope": "get_context",
+    "description": "GET /api/ghostwriter/context/{job_id} takes a caller-chosen job_id and declares no identity or owner dependency. Only the global session gate in server/app.py _install_auth_gate applies."
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/ghostwriter.py",
+    "line": 28,
+    "scope": "_get_job_and_profile",
+    "description": "JobsDB() is built with user_id=None, so get_by_id (db/jobs_db.py:699-703) adds no user_id filter and returns any user's job row."
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/ghostwriter.py",
+    "line": 32,
+    "scope": "_get_job_and_profile",
+    "description": "ProfileDB().summary() returns the owner's global profile, including the _flat field map, whoever the caller is."
+   },
+   {
+    "kind": "propagation",
+    "file": "intelligence/ghostwriter.py",
+    "line": 39,
+    "scope": "build_context",
+    "description": "A second unscoped get_by_id adds the job's brief, tailored summary and skills. Lines 44-66 add the job description and the owner's name, role, location, education, LinkedIn, GitHub and portfolio."
+   },
+   {
+    "kind": "sink",
+    "file": "server/routes/ghostwriter.py",
+    "line": 129,
+    "scope": "get_context",
+    "description": "The full context is returned to the caller as JSON. The chat route (line 114, then intelligence/ghostwriter.py:190 LLM.chat) sends the same context as the system prompt on the global provider key. cover_letter (line 78) and interview_prep (line 93) do the same."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "db/jobs_db.py",
+    "line": 155,
+    "description": "_and() returns an empty filter when user_id is None, so an unscoped JobsDB sees every user's rows."
+   },
+   {
+    "file": "server/routes/jobs.py",
+    "line": 17,
+    "description": "Sibling GET /api/jobs/{job_id} uses Depends(get_current_user_id) and JobsDB(user_id=uid). In the verifier run it returned 404 to user 2 for the owner's job."
+   },
+   {
+    "file": "server/routes/kits.py",
+    "line": 104,
+    "description": "Sibling kits regenerate LLM route uses Depends(require_owner). In the verifier run it returned 403 to user 2."
+   },
+   {
+    "file": "intelligence/prep.py",
+    "line": 193,
+    "description": "load_owner_profile gives the global profile only to PROFILE_OWNER_ID. This shows the intended rule for using the profile in LLM context."
+   },
+   {
+    "file": "core/llm.py",
+    "line": 66,
+    "description": "chat() uses _settings(), the single global SettingsDB provider configuration and key, so ghostwriter LLM calls spend the owner's credential."
+   },
+   {
+    "file": "server/routes/auth.py",
+    "line": 44,
+    "description": "Signup after the first account is allowed only when cfg.ALLOW_SIGNUP is true, so a non-owner account requires that setting."
+   },
+   {
+    "file": "MULTI_USER_STATUS.md",
+    "line": 46,
+    "description": "The project notes that the ghostwriter routes still call JobsDB() unscoped."
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "system_configuration",
+    "description": "ALLOW_SIGNUP=true, so accounts other than the owner (user id 1) can exist. The default is false (core/config.py:75)."
+   },
+   {
+    "kind": "authentication_level",
+    "description": "The attacker has a valid session for any non-owner account."
+   },
+   {
+    "kind": "data_state",
+    "description": "To read another user's job, the attacker needs that job's id, which is sha256('<uid>:<normalized url>')[:16] and can be computed from a public posting URL. The owner's profile is exposed with any existing job id, including the attacker's own."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "A signed-in non-owner user (id 2) on an instance where sign-ups are open.",
+   "payloads": [
+    "GET /api/ghostwriter/context/3111c49c93334335 with user 2's session cookie (owner job id = sha256('1:https://jobs.example.test/posting/123')[:16])",
+    "GET /api/ghostwriter/context/<user 2's own job id> with user 2's session cookie",
+    "POST /api/ghostwriter/chat/3111c49c93334335 {\"message\":\"hi\",\"history\":[]} with user 2's session cookie",
+    "POST /api/ghostwriter/cover-letter/<user 2's own job id> {} with user 2's session cookie",
+    "POST /api/ghostwriter/interview-prep/3111c49c93334335 with user 2's session cookie"
+   ],
+   "instructions": [
+    "Copy the source into sandbox scratch. In-process, point cfg.JOBS_DB_PATH, cfg.PROFILE_DB_PATH, UsersDB and SettingsDB at temp files. Set cfg.ALLOW_SIGNUP=True, cfg.COOKIE_SECURE=False and a 40+ character dummy APP_SECRET_KEY, pass a fresh APP_ENCRYPTION_KEY, then call create_app(ui_dir=<missing dir>) and use TestClient.",
+    "Replace core.llm.chat and core.llm.chat_json with local recording stubs so no provider is contacted.",
+    "Sign up owner@example.test (id 1) and user2@example.test (id 2). Set dummy owner profile fields full_name and linkedin_url. Add one dummy job for each user with JobsDB(user_id=...).add, putting a private marker in the owner's job description.",
+    "As user 2, call /api/jobs/<owner job>, /api/kits/<owner job>/regenerate and the ghostwriter payloads. Also make an anonymous call and an owner call to the context route. Record status codes, context markers and stub calls. Verifier script: scratch work/repro.py. Result promoted from work/evidence/ghostwriter_cross_tenant_v06.json."
+   ],
+   "observed_result": "User 2 got 404 from GET /api/jobs/<owner job> and 403 from POST /api/kits/<owner job>/regenerate. GET /api/ghostwriter/context/<owner job> returned 200 with the owner's job title, the private job-description marker, the owner's full_name and the owner's linkedin_url. With user 2's own job id, the context still held the owner's name and LinkedIn. chat on the owner's job, cover-letter on user 2's own job, and interview-prep on the owner's job each returned 200. They made three LLM stub calls whose system prompts held the owner's profile, and the chat and interview-prep calls also held the owner's private job description. An anonymous request returned 401, and the owner's own request returned 200. The recomputed owner job id matched the stored id 3111c49c93334335."
+  },
+  "remediation": {
+   "strategy": "Make all four ghostwriter routes owner-only with Depends(require_owner), because they read the owner's global profile and spend the owner's global LLM key. Scope the job lookup to the caller with JobsDB(user_id=uid). Regression test: user 2 gets 403 or 404 from all four ghostwriter routes, and the owner still gets 200 for the owner's own job.",
+   "code_changes": [
+    {
+     "file_name": "server/routes/ghostwriter.py",
+     "fixed_code": "from fastapi import APIRouter, Depends, HTTPException\nfrom core.auth import require_owner\n\ndef _get_job_and_profile(job_id: str, uid: int):\n    db  = JobsDB(user_id=uid)\n    job = db.get_by_id(job_id)\n    if not job:\n        raise HTTPException(404, \"Job not found\")\n    profile = ProfileDB().summary()\n    return job, profile, db\n\n@router.post(\"/api/ghostwriter/cover-letter/{job_id}\")\nasync def cover_letter(job_id: str, data: dict = None, uid: int = Depends(require_owner)):\n    job, profile, db = _get_job_and_profile(job_id, uid)\n    ...\n# same uid: int = Depends(require_owner) and _get_job_and_profile(job_id, uid) for interview_prep, chat and get_context"
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "low",
+    "reason": "Requires the non-default ALLOW_SIGNUP=true and a non-owner account. After that, one authenticated GET is enough, and owner job ids can be computed from public URLs."
+   },
+   "impact": {
+    "score": "medium",
+    "reason": "Discloses the owner's profile PII and other users' per-user job data across the tenant boundary, and lets a non-owner make unlimited LLM calls on the owner's key. There is no write, no tool execution and no account takeover."
+   },
+   "overall_severity": "medium"
+  },
+  "confidence": {
+   "score": "high",
+   "reason": "Reproduced independently by the verifier through the real FastAPI app, auth gate and routes with dummy accounts and stubbed LLM calls. Sibling routes deny the same caller, and every trace line was re-read in source."
+  }
+ },
+ {
+  "verdict": "confirmed",
+  "fingerprint": "server/routes/onboarding.py:profile-resume-routes-missing-require-owner",
+  "title": "Non-owner accounts can read and overwrite the owner's global profile, resume.pdf and search preferences",
+  "description": "These onboarding routes are protected only by the session gate: POST /api/setup/upload-resume, GET /api/profile, GET /api/profile/flat, POST /api/profile, GET/POST /api/search-prefs and GET /api/status. They act on the single machine-wide profile.db and resume.pdf. The code elsewhere treats both as belonging to account #1 (PROFILE_OWNER_ID / OWNER_USER_ID). When ALLOW_SIGNUP=true, any signed-in non-owner can read the owner's profile PII, including name, email and phone. A non-owner can also rewrite the owner's profile fields and search preferences, and replace resume.pdf. The orchestrator, the form fillers and the pipeline then use those values for the owner's real applications. Source shows that a text-bearing upload is then parsed by an LLM on the instance's configured provider key.",
+  "root_cause": "server/routes/onboarding.py declares upload_resume (line 43), get_profile (72), get_profile_flat (77), update_profile (82), get_prefs (126), save_prefs (136) and get_status (174) without the require_owner dependency (core/auth.py:190). These handlers instantiate the unscoped, global ProfileDB() and write cfg.RESUME_PATH directly. No other layer applies the owner check: the auth gate in server/app.py (line 88) only resolves a valid session uid.",
+  "intended_behavior": "Only PROFILE_OWNER_ID may read or change the global profile, resume and search preferences. answer_bank._profile_for (server/routes/answer_bank.py:30) and Orchestrator._owner_profile (applier/session.py:624) refuse the profile to anyone else, and the require_owner comment (core/auth.py:176-188) says the same. A non-owner should get 403, or a per-user profile.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "server/routes/onboarding.py",
+    "line": 81,
+    "scope": "update_profile",
+    "description": "POST /api/profile accepts a dict from any signed-in user. The handler has no require_owner dependency."
+   },
+   {
+    "kind": "propagation",
+    "file": "server/app.py",
+    "line": 88,
+    "scope": "auth_gate",
+    "description": "The gate only resolves a valid session uid and stores it on request.state. It does no owner or authorization check."
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/onboarding.py",
+    "line": 97,
+    "scope": "update_profile",
+    "description": "ProfileDB() opens the global cfg.PROFILE_DB_PATH, which is not scoped to the caller. Line 119 then writes the caller's values with set_many."
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/onboarding.py",
+    "line": 47,
+    "scope": "upload_resume",
+    "description": "upload_resume overwrites the global cfg.RESUME_PATH with the caller's bytes. At line 54 it parses the file and re-imports it into the global profile."
+   },
+   {
+    "kind": "sink",
+    "file": "applier/session.py",
+    "line": 624,
+    "scope": "Orchestrator._owner_profile",
+    "description": "The owner's applications use profile_db.summary() from the global ProfileDB. Resume uploads fall back to cfg.RESUME_PATH (applier/form_filler.py:96). So values a non-owner wrote are used in the owner's applications."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "server/routes/onboarding.py",
+    "line": 71,
+    "description": "GET /api/profile returns ProfileDB().get_by_category() with no owner check. /api/profile/flat (line 76) returns get_all() the same way."
+   },
+   {
+    "file": "server/routes/onboarding.py",
+    "line": 119,
+    "description": "db.set_many writes caller-supplied values into the global profile."
+   },
+   {
+    "file": "server/routes/onboarding.py",
+    "line": 135,
+    "description": "POST /api/search-prefs rewrites search_positions and search_locations in the global profile. tracking/pipeline.py:168 reads them for the owner's scraping run."
+   },
+   {
+    "file": "server/routes/onboarding.py",
+    "line": 42,
+    "description": "upload_resume has no require_owner dependency and writes the machine-wide resume.pdf."
+   },
+   {
+    "file": "core/auth.py",
+    "line": 190,
+    "description": "The require_owner guard exists, and server/routes uses it about 45 times, but none of these onboarding routes use it."
+   },
+   {
+    "file": "server/routes/answer_bank.py",
+    "line": 30,
+    "description": "Sibling code refuses the profile to anyone but PROFILE_OWNER_ID, which shows the intended owner-only policy."
+   },
+   {
+    "file": "applier/form_filler.py",
+    "line": 96,
+    "description": "A file upload falls back to cfg.RESUME_PATH when no resume variant is chosen, so a replaced resume.pdf is the one attached to the owner's application."
+   },
+   {
+    "file": "core/resume_parser.py",
+    "line": 60,
+    "description": "The resume parse calls LLM.chat_json on the configured provider when text is extracted, so a non-owner's upload can spend the instance's LLM key."
+   },
+   {
+    "file": "MULTI_USER_STATUS.md",
+    "line": 39,
+    "description": "Lists the global ProfileDB and resume as a known gap that blocks ALLOW_SIGNUP=true. This confirms the condition, not a disproof."
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "system_configuration",
+    "description": "ALLOW_SIGNUP=true must be set so that a second account can exist. The default is false, and the second signup was refused with 403 while it was false."
+   },
+   {
+    "kind": "authentication_level",
+    "description": "The attacker holds any valid signed-in session other than user id 1. Anonymous requests get 401."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "A signed-in non-owner (user id 2) on an instance with ALLOW_SIGNUP=true",
+   "payloads": [
+    "GET /api/profile/flat",
+    "POST /api/profile {\"email\":\"attacker-v07@example.com\"}",
+    "POST /api/search-prefs {\"positions\":[\"BOB-V07-ROLE\"]}",
+    "POST /api/setup/upload-resume multipart file=x.pdf content '%PDF-1.4 BOB-V07-RESUME'"
+   ],
+   "instructions": [
+    "Copy the source into the scratch work/src and make it writable. Run work/repro/v07_repro.py in the OS sandbox with dummy APP_ENCRYPTION_KEY and APP_SECRET_KEY values. The script points the settings, jobs, users and profile DBs and RESUME_PATH at a temp dir, sets COOKIE_SECURE=False, stubs LLM.chat_json, and builds create_app() with a nonexistent ui_dir.",
+    "Sign up owner@example.com (uid 1). Confirm that a second signup returns 403 while ALLOW_SIGNUP is false. Set cfg.ALLOW_SIGNUP=True and sign up bob@example.com (uid 2).",
+    "As the owner, POST /api/profile with a dummy email and phone, and write a dummy resume.pdf.",
+    "As bob, send each payload. Then, as the owner, read /api/profile/flat and /api/search-prefs, and read the bytes of resume.pdf. As a control, check that bob gets 403 on the owner-only /api/notifications/settings and that an anonymous client gets 401.",
+    "Results file for promotion: work/evidence/v07_owner_profile_nonowner.json."
+   ],
+   "observed_result": "Bob's GET /api/profile/flat returned 200 with email owner-v07@example.com and phone +10000000777. GET /api/profile and /api/status also returned 200. Bob's POST /api/profile returned 200 (updated 1), and the owner's email then read attacker-v07@example.com. Bob's POST /api/search-prefs returned 200, and the owner's positions became ['BOB-V07-ROLE']. Bob's upload returned 200, and resume.pdf then contained '%PDF-1.4 BOB-V07-RESUME'. Controls: bob got 403 on /api/notifications/settings, and anonymous got 401 on /api/profile/flat. The dummy PDF had no extractable text, so the LLM-spend path was not exercised and rests on source only."
+  },
+  "remediation": {
+   "strategy": "Add the require_owner dependency to every onboarding route that touches the global profile, resume or search preferences. Long term, scope ProfileDB and the resume by user_id, as MULTI_USER_STATUS.md plans. Add a regression test that a second user gets 403 on each route and that the owner's profile and resume.pdf stay unchanged.",
+   "code_changes": [
+    {
+     "file_name": "server/routes/onboarding.py",
+     "fixed_code": "from core.auth import get_current_user_id, require_owner\n\n@router.post(\"/api/setup/upload-resume\")\nasync def upload_resume(file: UploadFile = File(...), _owner: int = Depends(require_owner)): ...\n\n@router.get(\"/api/profile\")\nasync def get_profile(_owner: int = Depends(require_owner)): ...\n\n@router.get(\"/api/profile/flat\")\nasync def get_profile_flat(_owner: int = Depends(require_owner)): ...\n\n@router.post(\"/api/profile\")\nasync def update_profile(data: dict, _owner: int = Depends(require_owner)): ...\n\n@router.get(\"/api/search-prefs\")\nasync def get_prefs(_owner: int = Depends(require_owner)): ...\n\n@router.post(\"/api/search-prefs\")\nasync def save_prefs(data: dict, _owner: int = Depends(require_owner)): ...\n\n@router.get(\"/api/status\")\nasync def get_status(_owner: int = Depends(require_owner)): ..."
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "low",
+    "reason": "It needs the non-default ALLOW_SIGNUP=true and a signed-in second account. Once those hold, a single authenticated request is enough."
+   },
+   "impact": {
+    "score": "high",
+    "reason": "It exposes the owner's profile PII. It also lets another user change the contact data, search targets and resume used in real applications submitted in the owner's name. Per source, a text-bearing upload also spends the instance's LLM key."
+   },
+   "overall_severity": "medium"
+  },
+  "confidence": {
+   "score": "high",
+   "reason": "I re-read the full source lineage and reproduced the result myself in a sandboxed two-user TestClient run with dummy data. Owner-only control routes returned 403 as expected. Only the LLM-spend part rests on source alone."
+  }
+ },
+ {
+  "verdict": "confirmed",
+  "fingerprint": "server/routes/onboarding.py:upload_resume:unbounded-upload-sync-parse-on-event-loop",
+  "title": "/api/setup/upload-resume accepts uploads of any size and runs PDF parsing and the LLM call on the server's single event loop, stalling every other request",
+  "description": "POST /api/setup/upload-resume is an `async def` handler protected only by the session gate. The one input check is that the filename ends in `.pdf`. It copies the whole upload, with no size limit, into the single machine-wide cfg.RESUME_PATH. It then calls core.resume_parser.parse() synchronously, inside the handler. That function extracts text from every page with pdfplumber, with no page or byte cap, and then makes a blocking LLM.chat_json provider call, which can be two calls on invalid JSON. All of this runs on the one uvicorn event-loop thread (main.py starts a single uvicorn.Server). While it runs, every other request on that loop waits, from every user: HTTP, SSE and WebSocket. The sibling route /api/resumes enforces the 5 MB cap and moves its work off the loop with asyncio.to_thread. Independent local check against a real uvicorn server on loopback, with no timing stubs: (1) a non-owner signed-in user (id 2) uploaded 12,582,921 bytes named x.pdf; the route returned 200 and wrote the full 12,582,921 bytes to RESUME_PATH; (2) the same user uploaded a valid 60-page, 50 KB PDF, which is well under the sibling's 5 MB cap; the actual pdfplumber extraction took 3.63 s on the event-loop thread, and the owner's concurrent GET /api/auth/me took 3.8 s, against 0.0 s when idle. A 300-page variant used up the sandbox's 1 GiB address-space limit, so the stall grows with page count. A size cap alone would therefore not prevent the stall.",
+  "root_cause": "upload_resume (server/routes/onboarding.py:42-66) is declared async but does three kinds of blocking work directly on the event loop: synchronous file I/O (shutil.copyfileobj, line 48), pdfplumber extraction over all pages (core/resume_parser.py:79-83, called from parse at line 51), and a synchronous LLM.chat_json network call (core/resume_parser.py:60; core/llm.py:92 makes up to two chat() calls). It also has no size cap, no PDF signature check and no page cap. The equivalent controls exist in db/resumes_db.py (check_pdf at line 89; TEXT_PAGES=4 in extract_text at line 143) but are not used here.",
+  "intended_behavior": "Resume upload should apply the same bounds as resume variants: at most 5 MB, a %PDF- signature and a page cap on extraction. It should write the file atomically. PDF extraction and the LLM call should run off the event loop (core.llm.run_blocking or asyncio.to_thread, with a timeout), so one upload cannot stall other users' requests or write a file of whatever size the requester chooses.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "server/routes/onboarding.py",
+    "line": 42,
+    "scope": "upload_resume",
+    "description": "POST /api/setup/upload-resume, reachable by any valid session (auth gate only, no require_owner)"
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/onboarding.py",
+    "line": 44,
+    "scope": "upload_resume",
+    "description": "Only file.filename.lower().endswith('.pdf') is checked: no size limit, no signature check"
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/onboarding.py",
+    "line": 48,
+    "scope": "upload_resume",
+    "description": "shutil.copyfileobj writes the whole upload into cfg.RESUME_PATH, truncating it in place, with blocking I/O on the loop"
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/onboarding.py",
+    "line": 54,
+    "scope": "upload_resume",
+    "description": "parse(cfg.RESUME_PATH) is called synchronously inside the async handler, on the event-loop thread"
+   },
+   {
+    "kind": "propagation",
+    "file": "core/resume_parser.py",
+    "line": 79,
+    "scope": "_extract_text",
+    "description": "pdfplumber opens the file and extracts text from every page (lines 80-83), with no page or byte cap; the text is truncated to 12000 characters only after extraction (line 61)"
+   },
+   {
+    "kind": "sink",
+    "file": "core/resume_parser.py",
+    "line": 60,
+    "scope": "parse",
+    "description": "LLM.chat_json makes a blocking provider call, retried once on invalid JSON (core/llm.py:92), still on the event loop"
+   }
+  ],
+  "evidence": [
+   {
+    "file": "server/routes/onboarding.py",
+    "line": 43,
+    "description": "The handler is `async def`, so synchronous work inside it blocks the loop"
+   },
+   {
+    "file": "server/routes/kits.py",
+    "line": 58,
+    "description": "The sibling resume upload runs ResumeStore.add in asyncio.to_thread after reading at most MAX_BYTES+1 (line 56) and checking Content-Length (lines 53-55)"
+   },
+   {
+    "file": "db/resumes_db.py",
+    "line": 89,
+    "description": "check_pdf enforces non-empty, at most 5 MB and the %PDF- signature; upload-resume does not use it"
+   },
+   {
+    "file": "db/resumes_db.py",
+    "line": 143,
+    "description": "The sibling extraction caps pages at TEXT_PAGES (4); resume_parser._extract_text has no cap"
+   },
+   {
+    "file": "core/config.py",
+    "line": 22,
+    "description": "RESUME_PATH is a single machine-wide file (ROOT/resume.pdf), overwritten in place"
+   },
+   {
+    "file": "core/resume_parser.py",
+    "line": 81,
+    "description": "page.extract_text() is called for every page"
+   },
+   {
+    "file": "main.py",
+    "line": 187,
+    "description": "One uvicorn.Config/Server process with no workers option: one event loop serves every user"
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "authentication_level",
+    "description": "Any valid session cookie. The route has no require_owner; the missing owner check is reported separately by the peer access-control unit."
+   },
+   {
+    "kind": "system_configuration",
+    "description": "Cross-user impact needs a non-owner account, which requires ALLOW_SIGNUP=true (server/routes/auth.py:44, off by default). Otherwise only the owner can trigger it, and the stall affects only the owner."
+   },
+   {
+    "kind": "data_state",
+    "description": "The stall length grows with the PDF's page count and content (3.6 s for 60 simple pages locally) and, in a configured deployment, with LLM provider latency. The size of the file on disk is whatever the requester sends."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "A signed-in non-owner user on an instance with ALLOW_SIGNUP=true",
+   "payloads": [
+    "multipart/form-data field 'file', filename 'x.pdf', body b'%PDF-1.4\\n' + b'0' * 12582912",
+    "multipart/form-data field 'file', filename 'big.pdf', body a valid 60-page reportlab PDF (50,470 bytes, 50 text lines per page)"
+   ],
+   "instructions": [
+    "Copied the source into the v08 scratch and ran it inside sbx.sh (no external network, isolated loopback, uid nobody, 1 GiB address space). Used a fresh APP_ENCRYPTION_KEY, a dummy APP_SECRET_KEY of 40+ characters and ALLOW_SIGNUP=true. All databases and RESUME_PATH were redirected to a temp dir. No LLM is reachable, so the call fails fast and falls back to regex parsing.",
+    "Started the real app with uvicorn.Server on 127.0.0.1:18765 in-process (one event loop). Signed up the owner (id 1) and a member (id 2, owner=false) over HTTP with separate cookie jars.",
+    "Wrapped core.resume_parser._extract_text with a probe that only records whether an asyncio loop is running in its thread and how long the original takes. The probe adds no delay.",
+    "The member POSTed the 12 MiB payload to /api/setup/upload-resume, and the size of RESUME_PATH was recorded. The member then POSTed the 60-page PDF; 0.5 s later the owner sent GET /api/auth/me and its latency was measured.",
+    "Harness: scratch/work/harness/v08_upload.py. Output: work/evidence/v08_upload_resume.json, to be promoted to agents/v08/artifacts/work/evidence/v08_upload_resume.json."
+   ],
+   "observed_result": "12 MiB upload: 200 {\"status\":\"ok\"}, RESUME_PATH = 12,582,921 bytes, equal to the bytes sent. 60-page PDF upload: 200 in 4.3 s; probe on_event_loop_thread=true, extract_seconds=3.63. The owner's concurrent /api/auth/me returned 200 after 3.8 s; idle latency before and after was 0.0 s. A 300-page variant hit MemoryError under the sandbox's 1 GiB address-space limit, and the run was not continued."
+  },
+  "remediation": {
+   "strategy": "Bound the upload: read at most MAX_BYTES+1 and call db.resumes_db.check_pdf for the size and signature check. Write to a temp file and os.replace it into place. Run parsing and the LLM call off the loop with core.llm.run_blocking (thread pool plus timeout), and cap extracted pages, as TEXT_PAGES does. Both changes are needed, because a valid sub-5 MB PDF still stalls the loop. Regression tests: a 6 MB upload returns 413, and a concurrent request is not delayed while a slow parse runs.",
+   "code_changes": [
+    {
+     "file_name": "server/routes/onboarding.py",
+     "fixed_code": "@router.post(\"/api/setup/upload-resume\")\nasync def upload_resume(file: UploadFile = File(...), uid: int = Depends(require_owner)):\n    from db.resumes_db import MAX_BYTES, ResumeError, check_pdf\n    data = await file.read(MAX_BYTES + 1)\n    try:\n        check_pdf(data)\n    except ResumeError as e:\n        raise HTTPException(e.status, str(e))\n    tmp = cfg.RESUME_PATH.with_suffix('.pdf.part')\n    tmp.write_bytes(data)\n    os.replace(tmp, cfg.RESUME_PATH)\n    from core.llm import run_blocking\n    from core.resume_parser import parse\n    parsed = await run_blocking(parse, cfg.RESUME_PATH)\n    await run_blocking(ProfileDB().import_from_parsed, parsed)\n    ...  # plus: cap pages in core/resume_parser._extract_text (pdf.pages[:N])"
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "low",
+    "reason": "Needs a signed-in account. Cross-user impact needs ALLOW_SIGNUP=true, which is off by default. Once those hold, one small request is enough, and it can be repeated at will."
+   },
+   "impact": {
+    "score": "medium",
+    "reason": "While each upload's extraction and LLM call run, every request on the single process's event loop waits, from every user, including the owner. Repeated uploads keep the service stalled. The requester also chooses the size of the persistent file written. The effect is temporary and recovers when the request finishes."
+   },
+   "overall_severity": "low"
+  },
+  "confidence": {
+   "score": "high",
+   "reason": "The source shows synchronous blocking calls inside an async handler with no bounds. A local run against a real uvicorn server, with no timing stub, showed real pdfplumber work on the loop thread delaying a concurrent request from another user by about the extraction time. The LLM-latency contribution comes from the source and was not measured, because no provider is available."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "server/routes/runner.py:screenshot+server/routes/kits.py:upload_resume:multipart-spooled-before-auth-and-size-check",
+  "title": "Runner screenshot endpoint spools unlimited multipart bodies to disk before the runner token or the 3 MB cap is checked",
+  "description": "The session gate deliberately lets /api/runner/<32 hex>/screenshot through (server/static_shell.py:34, :83; server/app.py:80-81). The route declares file: UploadFile = File(...) and label: Form() (server/routes/runner.py:70). In the installed FastAPI 0.162.0, the request handler awaits request.form() for the whole body before it calls solve_dependencies (fastapi/routing.py:455 then :511), so require_runner (runner.py:38-43) only runs after the body is parsed. Starlette 1.7.0's MultiPartParser applies max_part_size (1 MiB) only to non-file fields. File parts go into SpooledTemporaryFile(max_size=1 MiB) (starlette/formparsers.py:233) with no total-size limit, so anything over 1 MiB rolls to a real temp file. Nothing in the repo bounds the request body: no middleware does, and main.py:187 builds uvicorn.Config with no limit_concurrency. An anonymous client can therefore make the server read and write an arbitrarily large body to TMPDIR before it gets a 401. The 3 MB Content-Length check (runner.py:73), file.read(MAX+1) (runner.py:75) and validate_png (applier/runner_hub.py:110) all run later. The verifier reproduced this independently. The same parse-before-check order makes the 5 MB check on /api/resumes (kits.py:54) ineffective as an ingress bound for signed-in users, but that route is behind the session gate and the anonymous control was stopped with 0 bytes read. For calibration, the JSON runner routes (claim/events/result) also read the whole body into memory before require_runner: an anonymous 2 MiB JSON body was fully consumed before the 401. FastAPI closes the spooled files when the request finishes, so disk is held only while requests are in flight. Exhausting it takes many concurrent or slow streaming uploads, and the shared effect depends on deployment facts the repository does not show.",
+  "claimed_root_cause": "The size limits sit inside the endpoint bodies (server/routes/runner.py:72-75, server/routes/kits.py:53-56). FastAPI only calls the endpoint after it has parsed the full multipart body, which Starlette spools to disk with no file-size limit, and after it has resolved Depends(require_runner). The runner paths skip the session gate (server/static_shell.py:34 RUNNER_PATH, is_public_path at :83). No middleware or uvicorn setting (main.py:187) bounds request bodies or concurrency. So the effective pre-authentication ingress bound on this route is none.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "server/static_shell.py",
+    "line": 34,
+    "scope": "RUNNER_PATH",
+    "description": "/api/runner/<32 hex>/screenshot exactly matches the regex that exempts runner paths from the session gate, so an anonymous client can reach it"
+   },
+   {
+    "kind": "propagation",
+    "file": "server/app.py",
+    "line": 80,
+    "scope": "auth_gate",
+    "description": "is_public_path is true, so line 81 calls call_next with no session check and no body limit"
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/runner.py",
+    "line": 70,
+    "scope": "screenshot",
+    "description": "File(...)/Form() parameters make FastAPI await request.form() for the whole body before solving Depends(require_runner). Starlette spools file parts to a SpooledTemporaryFile that rolls to disk after 1 MiB, with no file-size limit"
+   },
+   {
+    "kind": "sink",
+    "file": "server/routes/runner.py",
+    "line": 73,
+    "scope": "screenshot",
+    "description": "The 3 MB Content-Length check, and the bounded read at line 75, can only act after the body has been received and written to temp disk. require_runner (line 38) returns 401 after that work is done"
+   }
+  ],
+  "evidence": [
+   {
+    "file": "server/routes/runner.py",
+    "line": 38,
+    "description": "require_runner is a dependency, so FastAPI resolves it after it has parsed the form body"
+   },
+   {
+    "file": "server/routes/runner.py",
+    "line": 73,
+    "description": "The Content-Length-based 413 is evaluated inside the handler, after body parsing"
+   },
+   {
+    "file": "applier/runner_hub.py",
+    "line": 110,
+    "description": "validate_png enforces MAX_PNG_BYTES (defined at line 59) on data that has already been read, inside the hub call made after authentication"
+   },
+   {
+    "file": "server/routes/kits.py",
+    "line": 54,
+    "description": "Same pattern on /api/resumes: the 5 MB Content-Length check runs after the multipart body is spooled. This route is session-gated"
+   },
+   {
+    "file": "server/static_shell.py",
+    "line": 83,
+    "description": "is_public_path returns true for runner paths, so the session gate does not stop the body"
+   },
+   {
+    "file": "main.py",
+    "line": 187,
+    "description": "uvicorn.Config(app, host, port, log_level) sets no limit_concurrency or body bound. uvicorn itself has no request-body size limit"
+   }
+  ],
+  "blockers": [
+   "Whether the deployed reverse proxy, which .env.example recommends putting in front (Caddy/nginx, comment above APP_HOST), caps request body size for /api/runner/*. nginx defaults to 1 MiB (client_max_body_size). Caddy has no default limit.",
+   "Whether the uvicorn port or the proxy is reachable by untrusted clients. APP_HOST defaults to 127.0.0.1 (core/config.py), but the remote runner documented in runner/runner.py (--server https://...) implies a network-exposed server.",
+   "Whether the uvicorn process's TMPDIR shares a filesystem with data/ (SQLite DBs, encrypted resumes, sessions, screenshots), and how large it is. This decides whether temp disk filled by concurrent in-flight uploads breaks other users' writes."
+  ],
+  "validation_plan": {
+   "local": "Already done by verifier v09 in the OS-enforced sandbox (no network, scratch-only writes, prlimit). The script /mnt/work/v09_spool.py (scratch) wraps starlette.formparsers.SpooledTemporaryFile to count bytes written and track rollover. It drives create_app() directly over ASGI with a 6 MiB multipart file part streamed in 64 KiB chunks, with no Content-Length, to /api/runner/<32 zeros>/screenshot. Observed: with no Authorization header and with a bogus Bearer token, status 401 after 6,291,586 body bytes were consumed and 6,291,456 bytes were spooled with rolled_to_disk=true. Control: anonymous /api/resumes returned 401 from the session gate with 0 bytes consumed. Calibration: anonymous 2 MiB JSON to /api/runner/claim returned 401 after the full 2,097,171 bytes were read into memory. Output for promotion: work/evidence/v09_spool.json (the parent promotes it to agents/v09/artifacts/work/evidence/v09_spool.json). Hunter evidence agents/h03-files/artifacts/work/evidence/h1_spool.json agrees, with 8 MiB chunked and declared Content-Length cases.",
+   "deployment": "The owner inspects, without sending traffic to the live deployment: (1) the ingress configuration in front of uvicorn, for a request-body limit that applies to /api/runner/* (nginx client_max_body_size in the relevant server/location block, Caddy request_body { max_size }), and any concurrency or timeout limits for slow uploads; (2) whether port 8000 or the proxy's listener is reachable from untrusted networks (firewall rules, APP_HOST in the real .env); (3) the uvicorn service's TMPDIR (environment or systemd unit) and `df` for its filesystem compared with the filesystem holding data/. If the proxy enforces a body cap of a few MiB or less on these paths, or the server is only reachable from trusted hosts, the shared impact does not hold and the finding becomes hardening. Moving the size checks before body parsing (an ASGI middleware that rejects a Content-Length over the limit and counts streamed bytes for runner and upload paths, or parsing request.form(max_part_size=...) manually after authentication) fixes it in source."
+  }
+ },
+ {
+  "verdict": "confirmed",
+  "fingerprint": "server/routes/settings.py:settings-reads-expose-owner-notify-addresses",
+  "title": "Generic settings reads show the owner's private notification addresses and the last 4 characters of secrets to non-owners",
+  "description": "server/routes/notifications.py says the notify_* settings are owner-only because 'their addresses are personal', and GET /api/notifications/settings uses require_owner. A non-owner gets 403 there. But GET /api/settings (server/routes/settings.py:28-38) returns every row of the same SettingsDB table to any signed-in user. It masks only is_secret_key values, and those keep their last 4 characters. So notify_email_to, notify_email_from, notify_smtp_username, notify_smtp_host and notify_telegram_chat_id come back in plaintext. GET /api/settings/raw/{key} (lines 49-61) returns any non-secret key by name, such as notify_email_to. Neither route has require_owner. The global auth gate (server/app.py:77-95) only checks for a valid session. So any signed-in non-owner can read the owner's notification inbox address, SMTP username and host, and Telegram chat id. The same user also sees the last 4 characters of every secret, which covers API keys, the SMTP password and the Telegram bot token.",
+  "root_cause": "get_settings and get_setting_raw in server/routes/settings.py have no require_owner dependency and no per-key owner filter. They only mask secret values (keeping the last 4 characters) or refuse them (raw). SettingsDB.read_all returns every row decrypted. So the notify_* keys that notifications.py protects with require_owner can also be read through this second, weaker path to the same rows.",
+  "intended_behavior": "Only the owner should be able to read notify_* settings, as GET /api/notifications/settings already enforces. For non-owners, the generic settings reads should leave out the notify_ prefix and the secret keys, or both routes should require the owner.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "server/routes/settings.py",
+    "line": 28,
+    "scope": "get_settings",
+    "description": "The GET /api/settings route. Its signature has no require_owner dependency, so any session from the global auth gate gets through."
+   },
+   {
+    "kind": "propagation",
+    "file": "db/settings_db.py",
+    "line": 351,
+    "scope": "SettingsDB.read_all",
+    "description": "Returns every row of the settings table, decrypted, including the notify_* rows written by PUT /api/notifications/settings."
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/settings.py",
+    "line": 35,
+    "scope": "get_settings",
+    "description": "Masks only is_secret_key values and keeps their last 4 characters. notify_email_to, notify_smtp_username, notify_smtp_host and notify_telegram_chat_id go out unmasked."
+   },
+   {
+    "kind": "sink",
+    "file": "server/routes/settings.py",
+    "line": 60,
+    "scope": "get_setting_raw",
+    "description": "/api/settings/raw/{key} reads any non-secret key, such as notify_email_to, and returns it verbatim to any signed-in user."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "server/routes/notifications.py",
+    "line": 11,
+    "description": "The docstring says 'Owner-only throughout: the channels deliver the OWNER's news ... and their addresses are personal' (lines 11-12)."
+   },
+   {
+    "file": "server/routes/notifications.py",
+    "line": 32,
+    "description": "GET /api/notifications/settings depends on require_owner."
+   },
+   {
+    "file": "db/settings_db.py",
+    "line": 46,
+    "description": "is_secret_key matches only keys containing api_key or ending in _token or _password. Notification addresses, the chat id, the SMTP username and the SMTP host are not secret keys."
+   },
+   {
+    "file": "server/routes/settings.py",
+    "line": 49,
+    "description": "get_setting_raw takes only the key as a parameter. There is no owner dependency."
+   },
+   {
+    "file": "server/routes/settings.py",
+    "line": 68,
+    "description": "The generic POST refuses notify_* because the notifications route manages them. The generic reads have no matching restriction."
+   },
+   {
+    "file": "server/app.py",
+    "line": 88,
+    "description": "The auth gate only resolves a valid session user id. It does not check the owner."
+   },
+   {
+    "file": "tests/test_http_auth.py",
+    "line": 314,
+    "description": "test_settings_writes_are_owner_only_but_reads_are_not makes the generic reads open on purpose, for the providers list. Nothing in the test covers the notify_* owner-only policy."
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "system_configuration",
+    "description": "ALLOW_SIGNUP=true, so a second, non-owner account can exist (server/routes/auth.py)."
+   },
+   {
+    "kind": "authentication_level",
+    "description": "The attacker has any signed-in non-owner session (user id other than 1)."
+   },
+   {
+    "kind": "data_state",
+    "description": "The owner has configured notification settings, such as an email recipient or a Telegram chat id, or API keys and secrets."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "A signed-in non-owner (user id 2, owner=false)",
+   "payloads": [
+    "GET /api/notifications/settings",
+    "GET /api/settings",
+    "GET /api/settings/raw/notify_email_to",
+    "GET /api/settings/raw/notify_telegram_chat_id"
+   ],
+   "instructions": [
+    "Copy the source into the sandbox scratch. Run it with a fresh Fernet APP_ENCRYPTION_KEY and a dummy APP_SECRET_KEY of 40 or more characters. Point SettingsDB, UsersDB and JOBS_DB_PATH at temp paths, as in tests/test_http_auth.py setUp, and use create_app(ui_dir=<missing dir>) with TestClient.",
+    "Sign up owner-dummy@example.com (user 1). Set cfg.ALLOW_SIGNUP=True and sign up bob-dummy@example.com with a second client (user 2; /api/auth/me shows owner=false).",
+    "As the trusted harness, write these dummy values with SettingsDB.write: notify_email_to=owner-inbox-dummy@example.com, notify_telegram_chat_id=123456789, notify_smtp_username=owner-smtp-dummy, notify_smtp_host=smtp.dummy.invalid, openai_api_key=sk-dummy-owner-key-ABCD and notify_smtp_password=dummy-pass-WXYZ.",
+    "As user 2, request each payload. The output is saved to scratch work/evidence/settings_notify_nonowner.json, to be promoted to agents/v10/artifacts/work/evidence/settings_notify_nonowner.json."
+   ],
+   "observed_result": "User 2: GET /api/notifications/settings returned 403 (the owner got 200). GET /api/settings returned 200 with notify_email_to='owner-inbox-dummy@example.com', notify_telegram_chat_id='123456789', notify_smtp_username='owner-smtp-dummy', notify_smtp_host='smtp.dummy.invalid', openai_api_key='••••••••ABCD' and notify_smtp_password='••••••••WXYZ'. GET /api/settings/raw/notify_email_to and /api/settings/raw/notify_telegram_chat_id returned 200 with the dummy values. The raw route returned 403 for notify_smtp_password and openai_api_key."
+  },
+  "remediation": {
+   "strategy": "Make the generic settings reads respect the owner-only boundary that notifications.py declares. For non-owners, leave notify_* keys and secret keys out of GET /api/settings and refuse notify_* keys in /api/settings/raw/{key}. Alternatively, make both routes require the owner and give the providers list its own non-owner-safe endpoint. Add a regression test that a second user cannot see any notify_* value or secret suffix through any settings route.",
+   "code_changes": [
+    {
+     "file_name": "server/routes/settings.py",
+     "fixed_code": "from core.auth import get_current_user_id, require_owner, OWNER_USER_ID\n\n_OWNER_ONLY_PREFIXES = (\"notify_\",)\n\n@router.get(\"/api/settings\")\nasync def get_settings(uid: int = Depends(get_current_user_id)):\n    db = SettingsDB.get(); masked = {}\n    for k, v in db.read_all().items():\n        if uid != OWNER_USER_ID and (k.startswith(_OWNER_ONLY_PREFIXES) or is_secret_key(k)):\n            continue\n        masked[k] = (\"••••••••\" + v[-4:] if len(v) > 4 else \"••••\") if is_secret_key(k) and v else v\n    return JSONResponse({\"settings\": masked, \"provider_info\": db.provider_info()})\n\n@router.get(\"/api/settings/raw/{key}\")\nasync def get_setting_raw(key: str, uid: int = Depends(get_current_user_id)):\n    if is_secret_key(key) or (uid != OWNER_USER_ID and key.startswith(_OWNER_ONLY_PREFIXES)):\n        raise HTTPException(403, \"Not readable\")\n    return JSONResponse({\"key\": key, \"value\": SettingsDB.get().read(key, \"\")})"
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "low",
+    "reason": "Needs ALLOW_SIGNUP=true and a second signed-in account. Signup is closed by default once an owner exists."
+   },
+   "impact": {
+    "score": "low",
+    "reason": "Exposes the owner's personal notification addresses, SMTP username and host, and Telegram chat id. Also exposes the last 4 characters of API keys, the SMTP password and the bot token. No complete credential is exposed and nothing can be changed."
+   },
+   "overall_severity": "low"
+  },
+  "confidence": {
+   "score": "high",
+   "reason": "Reproduced independently in the OS-enforced sandbox with dummy data. In the same run, the owner-only sibling route returned 403 to the same non-owner, while both generic routes returned the protected values."
+  }
+ },
+ {
+  "verdict": "confirmed",
+  "fingerprint": "server/sse.py:stream:no-session-revalidation",
+  "title": "An open SSE event stream (and WebSocket) keeps sending a user's job events after their sessions are revoked",
+  "description": "GET /api/events/stream checks the session cookie once, when the request arrives, through the get_current_user_id dependency (core.auth.user_for_token). After that, server/sse.py stream() polls the user's application_events rows in an endless loop, sending keep-alive comments, and never checks the session again. Its only exit is the client disconnecting. Suppose someone holds a copy of a user's session cookie and has a stream open. The user then uses 'sign out everywhere', changes their password, or is deactivated. Every new request with the old cookie now gets 401, including a fresh stream. But the stream that was already open keeps sending each new event for the user's jobs: job id, stage changes, step code and message, actor and screenshot name. This lasts until the holder disconnects. By source, /ws/{job_id} in server/websocket.py has the same connect-time-only check: it calls user_for_token once and then loops forever sending queued apply-progress events and pings. Either way, the revocation promised in the server/app.py auth-gate comment ('ends sessions now, not whenever the 14-day token happens to expire') does not reach connections that are already open.",
+  "root_cause": "Authorization for long-lived responses is checked only when the connection opens. sse.stream() (server/sse.py:61-74) loops on db.events_since with no re-check. The route (server/routes/applications.py:90) passes it only is_disconnected, not the token or any re-check callback. The ws_endpoint loop (server/websocket.py:79-84) never calls core.auth.user_for_token again either. A bumped session_version or is_active=0, which user_for_token checks at core/auth.py:137 and db/users_db.py:146, therefore has no effect on connections already open.",
+  "intended_behavior": "Once a user's session version changes or the account is deactivated, every connection authenticated with an old token should stop sending data within a short, bounded time, the same way new HTTP requests and new WebSocket connects already get rejected.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "server/routes/applications.py",
+    "line": 86,
+    "scope": "event_stream",
+    "description": "GET /api/events/stream. The get_current_user_id dependency checks the cookie through user_for_token once, at request time, and gives back uid."
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/applications.py",
+    "line": 90,
+    "scope": "event_stream",
+    "description": "sse.stream(JobsDB(user_id=uid), last-event-id, is_disconnected=request.is_disconnected) is wrapped in a StreamingResponse. Neither the session token nor a re-check callback is passed in."
+   },
+   {
+    "kind": "propagation",
+    "file": "server/routes/auth.py",
+    "line": 142,
+    "scope": "logout_everywhere",
+    "description": "bump_session_version increments users.session_version. From then on user_for_token rejects the old token (core/auth.py:137), but only when something calls it again."
+   },
+   {
+    "kind": "sink",
+    "file": "server/sse.py",
+    "line": 67,
+    "scope": "stream",
+    "description": "Inside the while-True loop (line 61), every new application_event from db.events_since is sent as format_event(ev) to the connection that was already authenticated, with no session re-check."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "server/sse.py",
+    "line": 61,
+    "description": "An endless polling loop whose only exit is is_disconnected() returning True. Nothing re-validates the session."
+   },
+   {
+    "file": "server/app.py",
+    "line": 86,
+    "description": "The auth-gate comment promises that deactivation, password change and 'sign out everywhere' end sessions now."
+   },
+   {
+    "file": "core/auth.py",
+    "line": 137,
+    "description": "The session_version comparison that revokes old tokens. It only runs when user_for_token is called."
+   },
+   {
+    "file": "db/users_db.py",
+    "line": 146,
+    "description": "get_by_id filters on is_active=1, so deactivation is also enforced only inside user_for_token calls."
+   },
+   {
+    "file": "server/websocket.py",
+    "line": 67,
+    "description": "The WebSocket calls user_for_token once at connect. From line 79 it loops forever sending queue events and 25-second pings with no re-check. This is from source only and was not reproduced."
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "authentication_level",
+    "description": "The attacker must already hold a valid session cookie for the victim, for example a stolen or leaked one, and must open the stream or WebSocket before the victim revokes it."
+   },
+   {
+    "kind": "timing_dependency",
+    "description": "Data keeps flowing only while that one connection stays open. Once it drops, reconnecting with the revoked cookie gets 401 (SSE) or close 1008 (WebSocket), so Last-Event-ID resume does not help."
+   },
+   {
+    "kind": "data_state",
+    "description": "Only the victim's own events created after the revocation are exposed: their jobs' timeline on the SSE stream, or apply progress for the one job on the WebSocket. Other users' data cannot be reached this way."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "Someone holding a copy of the victim's session cookie who opened GET /api/events/stream before the victim used 'sign out everywhere'.",
+   "payloads": [
+    "GET /api/events/stream with Cookie: apex_session=<victim token issued before revocation>",
+    "POST /api/auth/logout-everywhere with the victim's cookie",
+    "JobsDB(user_id=1).record_step(job_id, 'opened_page', 'v11 post-revocation dummy step')"
+   ],
+   "instructions": [
+    "Copy the source into scratch and make it writable. Inside the OS sandbox (loopback only, uid nobody), start create_app(ui_dir=None) under uvicorn on 127.0.0.1, with a fresh Fernet APP_ENCRYPTION_KEY, a dummy APP_SECRET_KEY of 40+ characters, COOKIE_SECURE=false and ALLOW_SIGNUP=true. Script: scratch/work/scripts/repro.py.",
+    "POST /api/auth/signup for dummy user 1 (victim@example.test) and keep the apex_session cookie as the copied cookie. Add a dummy job with JobsDB(user_id=1).add(...).",
+    "With the copied cookie, open a streaming GET /api/events/stream in a background thread and wait about 1.5 seconds.",
+    "POST /api/auth/logout-everywhere with the same cookie. Confirm that the old cookie now gets 401 on GET /api/stats and on a new GET /api/events/stream.",
+    "Record a new step event for the victim's job with JobsDB(user_id=1).record_step(...), wait 3 seconds, and read the data: frames the already-open stream received. The results are in work/evidence/v11_sse_after_revocation.json, promoted to agents/v11/artifacts/work/evidence/v11_sse_after_revocation.json."
+   ],
+   "observed_result": "logout-everywhere returned 200 {\"status\":\"ok\"}. With the old cookie, /api/stats and a new /api/events/stream both returned 401 {\"detail\":\"Not logged in\"}. The stream opened before the revocation (HTTP 200) then received 'data: {\"id\": 2, \"job_id\": \"42ebafbf04d94546\", ..., \"kind\": \"step\", \"from_stage\": \"found\", \"to_stage\": \"found\", \"actor\": \"agent\", \"detail\": {\"step\": \"opened_page\", \"message\": \"v11 post-revocation dummy step\"}, \"screenshot\": \"\"}', an event created after the revocation. This matches the hunter's independent result."
+  },
+  "remediation": {
+   "strategy": "Re-check the session inside long-lived handlers. The SSE route should capture the original request's session token and pass sse.stream a callback that re-runs core.auth.user_for_token on it (off the event loop) and compares the user id. The stream should call it at most every few seconds and always before yielding a batch, and end the generator when the check fails. In the WebSocket loop, re-run user_for_token on each 25-second timeout and before sending each queued message, require the same user id, and close with code 1008 on failure. Add regression tests that logout-everywhere, change-password and deactivation each end an open SSE stream and an open WebSocket.",
+   "code_changes": [
+    {
+     "file_name": "server/routes/applications.py",
+     "fixed_code": "import asyncio\n...\n@router.get(\"/api/events/stream\")\nasync def event_stream(request: Request, uid: int = Depends(get_current_user_id)):\n    from core.auth import SESSION_COOKIE, user_for_token\n    token = request.cookies.get(SESSION_COOKIE)\n    async def still_authorized() -> bool:\n        user = await asyncio.to_thread(user_for_token, token)\n        return user is not None and user[\"id\"] == uid\n    gen = sse.stream(JobsDB(user_id=uid), request.headers.get(\"last-event-id\"),\n                     is_disconnected=request.is_disconnected, still_authorized=still_authorized)\n    return StreamingResponse(gen, media_type=\"text/event-stream\", headers={\n        \"Cache-Control\": \"no-cache\", \"X-Accel-Buffering\": \"no\"})"
+    },
+    {
+     "file_name": "server/sse.py",
+     "fixed_code": "async def stream(db, last_event_id=None, *, poll=POLL_SECONDS, heartbeat=HEARTBEAT_SECONDS,\n                 is_disconnected=None, still_authorized=None, recheck=5.0):\n    ...\n    checked = time.monotonic()\n    while True:\n        if is_disconnected is not None and await is_disconnected():\n            return\n        if still_authorized is not None and time.monotonic() - checked >= recheck:\n            if not await still_authorized():\n                return\n            checked = time.monotonic()\n        events = await asyncio.to_thread(db.events_since, last)\n        ..."
+    },
+    {
+     "file_name": "server/websocket.py",
+     "fixed_code": "    token, uid = websocket.cookies.get(SESSION_COOKIE), user[\"id\"]\n    async def still_ok() -> bool:\n        u = await asyncio.to_thread(user_for_token, token)\n        return u is not None and u[\"id\"] == uid\n    ...\n        while True:\n            try:\n                msg = await asyncio.wait_for(q.get(), timeout=25.0)\n            except asyncio.TimeoutError:\n                msg = {\"event\": \"ping\", \"data\": {}}\n            if not await still_ok():\n                await websocket.close(code=1008)\n                return\n            await websocket.send_json(msg)"
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "low",
+    "reason": "The attacker needs the victim's valid session cookie and must already have a connection open when the victim revokes. Revocation exists for exactly the stolen-session case, so the precondition is realistic but narrow."
+   },
+   "impact": {
+    "score": "low",
+    "reason": "Read-only access to the revoked user's own new job timeline events (job ids, stages, step messages, screenshot names), or to apply progress for one job, continues for the life of one connection. There is no write access, no other user's data, and no wider privilege."
+   },
+   "overall_severity": "low"
+  },
+  "confidence": {
+   "score": "high",
+   "reason": "Reproduced independently in the sandbox: after logout-everywhere the old cookie got 401 on new requests, while the stream that was already open delivered an event created after the revocation. The source shows no re-check in either loop. The WebSocket variant is from source only."
+  }
+ }
+]

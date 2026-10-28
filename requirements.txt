@@ -12,6 +12,9 @@ google-generativeai>=0.7.0  # gemini
 # Browser automation
 playwright>=1.40.0
 
+# Job-board search without a login (LinkedIn guest search, Indeed's job API, Naukri's search API)
+python-jobspy>=1.4.1
+
 # Resume parsing
 pdfplumber>=0.10.0
 

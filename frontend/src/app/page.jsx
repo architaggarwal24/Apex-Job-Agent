@@ -1,10 +1,11 @@
 // frontend/src/app/page.jsx
 //
-// Today: what needs you now. It replaces the old Dashboard (and its redirect to the
-// backend's first-run /setup page - the get-started checklist here covers what /setup did).
+// Today: what needs you now, on one screen. It replaces the old Dashboard (and its redirect to
+// the backend's first-run /setup page - the get-started checklist here covers what /setup did).
 //
-//   counts          needs you · ready to review · interviews in the next 48 h · follow-ups due,
-//                   each a link into the Applications workspace, filtered to exactly those cards
+//   counts          inbox · needs you · ready to review · interviews in the next 48 h · follow-ups
+//                   due: one strip, each a link into Applications filtered to exactly those cards
+//   waiting on you  the jobs that need you, the ones ready to review, and the follow-ups due
 //   follow-ups due  with the draft, Copy, Done, Snooze               (/api/follow-ups/*)
 //   queue           running / paused, today's budget, the countdown to the next apply,
 //                   pause / resume (owner only)                       (/api/queue/*)
@@ -15,21 +16,49 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api, send } from '@/lib/api'
-import { nextStepWithin } from '@/lib/filters'
+import { cancelSearch as cancelSearchReq, startSearch, useOnSearchFinished, usePipeline } from '@/lib/pipeline'
+import { SearchSteps } from '@/components/layout/SearchProgress'
+import { byScore, nextStepWithin } from '@/lib/filters'
 import { INTERVIEW_STAGES, TODAY_LINKS, budget, countdown } from '@/lib/insights'
 import { copyText, useLiveEvents } from '@/lib/live'
 import { OWNER_ONLY, useMe } from '@/lib/me'
+import { motion, AnimatePresence } from 'motion/react'
+import { ArrowRight, ChevronDown, Pause, Play, Search, X } from 'lucide-react'
+import { useCountUp } from '@/lib/motion'
+import { reasonLabel } from '@/lib/stages'
+import { SkeletonRows } from '@/components/layout/Skeleton'
 
 const KIND = { check_in: 'Check in', thank_you: 'Thank you', status_ask: 'Ask for news' }
 const when = s => String(s || '').replace('T', ' ').slice(0, 16)
 
-function Count({ n, label, href, tone }) {
+function Count({ n, label, href, tone, hint }) {
+  const shown = useCountUp(n)
   return (
-    <Link className="card stat today-count" href={href} data-count={label}>
-      <div className="l">{label}</div>
-      <div className="n" style={tone ? { color: tone } : undefined}>{n ?? '—'}</div>
-      <div className="m">Open in Applications →</div>
+    <Link className="metric today-count" href={href} data-count={label} data-tone={tone} title={hint}>
+      <span className="l">{tone && <span className={`dot ${tone === 'warn' ? 'y' : 'g'} ${tone === 'warn' && n ? 'pulse' : ''}`} />}{label}</span>
+      <span className="n">{shown ?? '—'}</span>
     </Link>
+  )
+}
+
+// The jobs that wait on you: blocked ones (with why) and the ones ready to review.
+function Waiting({ apps }) {
+  if (apps === null) return <SkeletonRows n={3} label="Loading what waits on you" />
+  const blocked = apps.filter(a => a.stage === 'needs_you').sort(byScore)
+  const review = apps.filter(a => a.stage === 'ready_for_review').sort(byScore)
+  if (!blocked.length && !review.length) return <div className="wait-empty m">No job is waiting on you. The agent is working through the queue.</div>
+  const row = (a, label, href) => (
+    <Link key={a.job_id} className="wait-row" href={href} data-waiting={a.job_id}>
+      <span className={`badge ${a.stage === 'needs_you' ? 'b-wait' : 'b-fill'}`}>{label}</span>
+      <span className="wait-t"><b>{a.title}</b><span className="m"> · {a.company}</span></span>
+      <span className="m mono">{a.days_in_stage != null ? `${a.days_in_stage}d` : ''}</span>
+      <ArrowRight className="lucide" aria-hidden="true" />
+    </Link>)
+  return (
+    <div className="wait">
+      {blocked.map(a => row(a, reasonLabel(a.blocked_reason) || 'Needs you', `/applications?needs_you=1&job=${encodeURIComponent(a.job_id)}`))}
+      {review.map(a => row(a, 'Review', TODAY_LINKS.ready_for_review))}
+    </div>
   )
 }
 
@@ -40,7 +69,7 @@ function FollowUps({ items, reload, flash }) {
     try { await send(`/api/follow-ups/${f.id}/${path}`, 'POST', body); flash(true, label) } catch (e) { flash(false, e.message) }
     setBusy(0); reload()
   }
-  if (items === null) return <div className="m">Loading…</div>
+  if (items === null) return <SkeletonRows n={2} label="Loading follow-ups" />
   if (!items.length) return <div className="m">No follow-ups due. Nice.</div>
   return items.map(f => (
     <div key={f.id} className="fu" data-follow-up={f.id}>
@@ -73,7 +102,7 @@ function Queue({ owner, flash }) {
     try { setQ(await send(`/api/queue/${q.paused ? 'resume' : 'pause'}`, 'POST')); flash(true, q.paused ? 'Queue resumed' : 'Queue paused') } catch (e) { flash(false, e.message) }
     setBusy(false)
   }
-  if (!q) return <div className="m">Loading…</div>
+  if (!q) return <SkeletonRows n={2} label="Loading the queue" />
   const b = budget(q.applied_today, q.daily_limit)
   const state = !q.running ? ['stopped', 'b-fail'] : q.paused ? ['paused', 'b-wait'] : q.current_job ? ['working', 'b-fill'] : ['running', 'b-done']
   const next = q.paused ? 'paused' : q.current_job ? 'working on one now' : !q.queue_length ? 'nothing queued'
@@ -84,7 +113,7 @@ function Queue({ owner, flash }) {
         <span className={`badge ${state[1]}`} data-queue-state={state[0]}>{state[0]}</span>
         <span className="m">{q.queue_length} queued</span>
         <span className="spacer" />
-        <button className="btn sm" disabled={!owner || busy} title={owner ? '' : OWNER_ONLY} onClick={toggle}>{q.paused ? 'Resume' : 'Pause'}</button>
+        <button className="btn sm" disabled={!owner || busy} title={owner ? '' : OWNER_ONLY} onClick={toggle}>{q.paused ? <Play className="lucide" /> : <Pause className="lucide" />}{q.paused ? 'Resume' : 'Pause'}</button>
       </div>
       {q.current_job && <div className="m" style={{ marginTop: '.5rem' }}>Now: {q.current_job.title} · {q.current_job.company}</div>}
       <div className="budget" title="Applied today against the daily limit">
@@ -115,20 +144,26 @@ function SearchPrefs({ item, reload, flash }) {
 }
 
 function Checklist({ data, reload, owner, runSearch, flash }) {
+  const [open, setOpen] = useState(true)
+  const pct = Math.round(data.done / Math.max(1, data.total) * 100)
   return (
     <div className="card section checklist">
-      <div className="row"><h2 style={{ padding: 0 }}>Get started</h2><span className="m">{data.done} of {data.total} done</span></div>
-      <ol>{data.items.map(i => (
+      <button className="ck-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <b>Set up Apex</b><span className="m mono">{data.done} of {data.total} done</span>
+        <span className="ck-track" aria-hidden="true"><i style={{ width: `${pct}%` }} /></span>
+        <ChevronDown className="lucide" style={{ transform: open ? 'rotate(180deg)' : 'none' }} aria-hidden="true" />
+      </button>
+      {open && <ol>{data.items.map(i => (
         <li key={i.key} className={i.done ? 'done' : ''} data-item={i.key}>
-          <span className="ck" aria-label={i.done ? 'done' : 'to do'}>{i.done ? '✓' : '○'}</span>
+          <span className="ck" aria-label={i.done ? 'done' : 'to do'}>{i.done ? '✓' : ''}</span>
           <div className="ck-body">
-            <div className="row"><b>{i.label}</b><span className="m">{i.detail}</span><span className="spacer" />
+            <div className="row"><b>{i.label}</b>{i.optional && !i.done && <span className="badge b-idle">optional</span>}<span className="m">{i.detail}</span><span className="spacer" />
               {!i.done && i.href && <Link className="btn sm" href={i.href}>Go</Link>}
               {!i.done && i.key === 'search' && <button className="btn sm" disabled={!owner} title={owner ? '' : OWNER_ONLY} onClick={() => runSearch(false)}>Run search</button>}
             </div>
             {!i.done && i.key === 'search_prefs' && <SearchPrefs item={i} reload={reload} flash={flash} />}
           </div>
-        </li>))}</ol>
+        </li>))}</ol>}
     </div>
   )
 }
@@ -155,62 +190,83 @@ export default function Today() {
   }, [loadApps, loadDue, loadList])
   useLiveEvents(() => { loadApps(); loadDue() })
 
+  const search = usePipeline()
+  const searching = !!search?.running
+  const onFinished = useCallback(() => { loadList(); loadApps() }, [loadList, loadApps])
+  useOnSearchFinished(onFinished)
   const runSearch = async quick => {
     setRunning(true)
-    try { await send('/api/pipeline/run', 'POST', { quick }); flash(true, 'Search running in the background - new jobs appear in Applications as they are scored') }
+    try { await startSearch(quick) }
     catch (e) { flash(false, e.status === 403 ? 'Only the owner account can run the search' : e.message) }
-    setTimeout(() => { setRunning(false); loadList() }, 3000)
+    setRunning(false)
   }
   const cancelSearch = async () => {
-    try { await send('/api/pipeline/cancel', 'POST'); flash(true, 'Cancel requested - finishing the current step, then stopping') } catch (e) { flash(false, e.message) }
+    try { await cancelSearchReq(); flash(true, 'Cancel requested - finishing the current step, then stopping') } catch (e) { flash(false, e.message) }
   }
 
   const now = new Date()
   const count = pred => (apps ? apps.filter(pred).length : null)
   const counts = {
+    inbox: count(a => a.stage === 'found'),
     needs_you: count(a => a.stage === 'needs_you'),
     ready: count(a => a.stage === 'ready_for_review'),
     interviews: count(a => INTERVIEW_STAGES.includes(a.stage) && nextStepWithin(a.next_step_at, 48, now)),
     follow_ups: due ? new Set(due.map(f => f.job_id)).size : null,
   }
+  const hour = now.getHours()
 
   return (
     <>
-      <h1>Today</h1>
-      <p className="sub">
-        {now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
-        {status?.llm && <span className="chip" style={{ marginLeft: 10 }}>{status.llm.label || status.llm.provider} / {status.llm.model}</span>}
-        {status?.dry_run && <span className="chip mid" style={{ marginLeft: 6 }}>Dry run</span>}
-      </p>
-      {msg && <div className={`toast ${msg.ok ? 'ok' : 'err'}`} role="status">{msg.text}</div>}
+      <div className="page-head today-head">
+        <div>
+          <h1>{hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'}</h1>
+          <p className="sub">
+            {now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+            {status?.llm && <span className="chip mono">{status.llm.label || status.llm.provider} / {status.llm.model}</span>}
+            {status?.dry_run && <span className="chip mid">Dry run</span>}
+          </p>
+        </div>
+        <div className="row">
+          {searching
+            ? <button className="btn danger" disabled={!owner} title={owner ? '' : OWNER_ONLY} onClick={cancelSearch}><X className="lucide" />Cancel</button>
+            : <button className="btn" disabled={!owner || running} title={owner ? '' : OWNER_ONLY} onClick={() => runSearch(true)}>Quick run</button>}
+          <button className="btn primary" disabled={!owner || running || searching} title={owner ? '' : OWNER_ONLY} onClick={() => runSearch(false)}>
+            {running || searching ? <span className="sp" /> : <Search className="lucide" />}{running ? 'Starting…' : searching ? 'Searching…' : 'Run search'}</button>
+        </div>
+      </div>
+      <AnimatePresence>{msg && <motion.div key="toast" className={`toast ${msg.ok ? 'ok' : 'err'}`} role="status"
+        initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>{msg.text}</motion.div>}</AnimatePresence>
       {list && !list.complete && <Checklist data={list} reload={loadList} owner={owner} runSearch={runSearch} flash={flash} />}
 
-      <div className="stats today-counts">
-        <Count n={counts.needs_you} label="Needs you" href={TODAY_LINKS.needs_you} tone="var(--ylw)" />
+      <nav className="metrics today-counts" aria-label="Counts">
+        <Count n={counts.inbox} label="To triage" href="/applications" hint="New jobs in the Inbox" />
+        <Count n={counts.needs_you} label="Needs you" href={TODAY_LINKS.needs_you} tone="warn" />
         <Count n={counts.ready} label="Ready to review" href={TODAY_LINKS.ready_for_review} />
-        <Count n={counts.interviews} label="Interviews in 48 h" href={TODAY_LINKS.interviews} tone="var(--grn)" />
+        <Count n={counts.interviews} label="Interviews in 48 h" href={TODAY_LINKS.interviews} tone="good" />
         <Count n={counts.follow_ups} label="Follow-ups due" href={TODAY_LINKS.follow_ups} />
-      </div>
+      </nav>
 
       <div className="today-grid">
-        <div className="card section">
-          <h2 style={{ padding: 0, marginBottom: 'var(--sp2)' }}>Follow-ups due</h2>
-          <FollowUps items={due} reload={() => { loadDue(); loadApps() }} flash={flash} />
+        <div className="today-main">
+          <section className="card section">
+            <h2 className="sec-h">Waiting on you</h2>
+            <Waiting apps={apps} />
+          </section>
+          <section className="card section">
+            <h2 className="sec-h">Follow-ups due</h2>
+            <FollowUps items={due} reload={() => { loadDue(); loadApps() }} flash={flash} />
+          </section>
         </div>
-        <div>
-          <div className="card section">
-            <h2 style={{ padding: 0, marginBottom: 'var(--sp2)' }}>Queue</h2>
-            <Queue owner={owner} flash={flash} />
-          </div>
-          <div className="card section">
-            <h2 style={{ padding: 0, marginBottom: 'var(--sp2)' }}>Job search</h2>
-            <div className="row">
-              <button className="btn primary" disabled={!owner || running} title={owner ? '' : OWNER_ONLY} onClick={() => runSearch(false)}>{running ? '…' : 'Run search'}</button>
-              <button className="btn" disabled={!owner || running} title={owner ? '' : OWNER_ONLY} onClick={() => runSearch(true)}>Quick run</button>
-              <button className="btn danger" disabled={!owner} title={owner ? '' : OWNER_ONLY} onClick={cancelSearch}>Cancel</button>
-            </div>
+        <div className="today-side">
+          <section className="card section">
+            <h2 className="sec-h">Job search</h2>
+            <SearchSteps />
             {!owner && me && <div className="hint">{OWNER_ONLY}</div>}
-          </div>
+          </section>
+          <section className="card section">
+            <h2 className="sec-h">Queue</h2>
+            <Queue owner={owner} flash={flash} />
+          </section>
         </div>
       </div>
     </>

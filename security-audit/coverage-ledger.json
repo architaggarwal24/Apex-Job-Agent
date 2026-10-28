@@ -1,0 +1,3240 @@
+[
+ {
+  "coverage_id": "applier%2Fform_analyzer.py%23analyze%3Bapplier%2Fform_filler.py%23fill%3Bapplier%2Fautonomy.py%23decide::applier%2Fautonomy.py%23rule%20decision::applier::AI-AND-LLM.md%23Indirect%20injection%20through%20retrieved%20or%20ingested%20content",
+  "canonical_refs": {
+   "surface": "applier/form_analyzer.py#analyze;applier/form_filler.py#fill;applier/autonomy.py#decide",
+   "boundary": "applier/autonomy.py#rule decision",
+   "subsystem": "applier",
+   "attack_class": "AI-AND-LLM.md#Indirect injection through retrieved or ingested content"
+  },
+  "surface": "LLM form analysis, filling and autonomy auto-submit",
+  "boundary": "LLM-to-action boundary (dry run, review approval, autonomy rules)",
+  "subsystem": "applier",
+  "attack_class": "Indirect injection through retrieved or ingested content",
+  "starting_paths": [
+   "applier/form_analyzer.py",
+   "applier/form_filler.py",
+   "applier/universal.py",
+   "applier/autonomy.py",
+   "applier/review.py",
+   "applier/queue_worker.py",
+   "applier/answer_fill.py",
+   "intelligence/kits.py"
+  ],
+  "ordinary_attack_class_block": null,
+  "selected_companion_blocks": [
+   "AI-AND-LLM.md#Core discipline",
+   "AI-AND-LLM.md#Indirect injection through retrieved or ingested content",
+   "AI-AND-LLM.md#Tool-argument injection into a downstream sink",
+   "AI-AND-LLM.md#Action-confirmation and approval binding",
+   "AI-AND-LLM.md#Sensitive context extraction",
+   "AI-AND-LLM.md#Universal moves",
+   "AI-AND-LLM.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "h02-llm",
+  "reviewed_paths": [
+   "applier/adapters/runner.py",
+   "applier/answers.py",
+   "applier/apply_mode.py",
+   "applier/autonomy.py",
+   "applier/form_analyzer.py",
+   "applier/form_filler.py",
+   "applier/kit.py",
+   "applier/queue_worker.py",
+   "applier/review.py",
+   "applier/session.py",
+   "applier/site_type.py",
+   "applier/universal.py",
+   "db/profile_db.py",
+   "server/routes/apply.py",
+   "server/routes/review.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h02-llm",
+    "reviewed_paths": [
+     "applier/universal.py",
+     "applier/session.py",
+     "applier/review.py",
+     "applier/autonomy.py",
+     "applier/answers.py",
+     "server/routes/review.py",
+     "server/routes/apply.py",
+     "applier/adapters/runner.py"
+    ],
+    "invariant": "The submit that follows a human review approval or an autonomy auto-approval must fill and submit only the values in the approved review packet (review.py:30-31 says so).",
+    "method": "local",
+    "result": "Function-level harness with no browser, no network and no LLM. A packet holding one profile-sourced field (Email) passes autonomy.answers_known, and a rule with require_all_answers_known has no failures. reviewed_answers was loaded into the AnswerContext state, as Orchestrator._use_reviewed_values does. universal.run_submit then ran against a fake page and a stub analyze() that returned the Email field plus two fields that were never reviewed: a consent checkbox filled with the LLM placeholder 'yes', and Date of birth. Both were passed to execute(), click_submit was called with the LLM-chosen '#submit', and run_submit returned success=true with dry_run=false. No code compares the submit-pass fields with the packet. applier/adapters/runner.run_submit (lines 141-153) has the same pattern without an LLM.",
+    "artifact": "agents/h02-llm/artifacts/work/evidence/submit_binding.json"
+   },
+   {
+    "agent_id": "h02-llm",
+    "reviewed_paths": [
+     "applier/form_analyzer.py",
+     "applier/form_filler.py",
+     "db/profile_db.py"
+    ],
+    "invariant": "LLM-produced selectors, values and field types must not reach a sink beyond the page under review: a file path, URL fetch, SQL, shell or a privileged API.",
+    "method": "source",
+    "result": "The LLM's selector, value, next_selector and submit_selector only reach Playwright query_selector/fill/click/select_option on the same page. File uploads use only resume_path, cfg.RESUME_PATH or ROOT_DIR/cover_letter.pdf; the LLM picks no path. No SQL, shell or fetch sink was found. LLM free-text corrections are filtered against db.profile_db.CORRECTABLE_FIELDS after the call. The profile given to analyze() holds PII only, no credentials. No finding here.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h02-llm",
+    "reviewed_paths": [
+     "applier/site_type.py",
+     "applier/apply_mode.py",
+     "applier/queue_worker.py",
+     "applier/kit.py"
+    ],
+    "invariant": "Autonomy decisions use deterministic gates (kill switch, enabled rule, pending attempt, daily limit, dry_run), and review provenance cannot be self-asserted by the LLM.",
+    "method": "source",
+    "result": "consider_auto_approval checks is_enabled, the enabled rules, pending_attempt and the daily limit, and dry_run is checked before click_submit. review._provenance labels a value 'profile' only when field_key is in the person's answered values and the value is equal, so the LLM cannot claim profile confidence by itself. Assist mode comes from a URL-only site type and blocks submit. The queue worker submits only through autonomy's Orchestrator.submit. kit.py checks the LLM's resume pick against the user's own resume ids. The weaknesses left over are recorded as hardening.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "applier/universal.py:run_submit:fresh-reanalysis-not-bound-to-review-packet"
+  ],
+  "unresolved": [],
+  "x_hardening": [
+   "Autonomy rule selection uses the site type detected from page HTML markers (applier/universal.py _site_type -> applier/site_type.py _EMBEDDED_ATS). A generic careers page whose HTML contains a string such as 'smartrecruiters.com' is therefore judged under the owner's SmartRecruiters rule and counted in that site type's ledger stats. Consider binding the autonomy site type to the URL host, or to the URL-only type that apply_mode already uses.",
+   "The autonomy min_score condition uses ai_score, which an LLM computes from the attacker-written job description. Treat it as a ranking signal, not an authorization gate, and keep the deterministic conditions (require_all_answers_known, max_per_day, the daily limit) on by default for '*' rules.",
+   "applier/form_analyzer.py analyze() sends up to 2000 characters of the whole non-empty _flat profile, including identity fields such as ethnicity, disability_status and date_of_birth, to the LLM for every form page. Sending only the profile keys that match extracted field labels would reduce what a manipulated analysis can place into fields.",
+   "applier/form_filler.py _fill_one radio branch builds f\"{sel}[value='{value}']\" from LLM output without CSS escaping. This is not a security boundary (it stays on the same page), but escaping with _css_escape_attr would avoid misclicks."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "core%2Fbrowser.py%23launch_browser%20accept_downloads%3Brunner%2Frunner.py%23launch%20accept_downloads::core%2Fbrowser.py%23launch_persistent_context::core%2Fbrowser.py%2Brunner%2Frunner.py::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+  "canonical_refs": {
+   "surface": "core/browser.py#launch_browser accept_downloads;runner/runner.py#launch accept_downloads",
+   "boundary": "core/browser.py#launch_persistent_context",
+   "subsystem": "core/browser.py+runner/runner.py",
+   "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+  },
+  "surface": "Download handling in both browser launches (accept_downloads=True, no download listener)",
+  "boundary": "Untrusted ATS/job page versus server (or runner) filesystem",
+  "subsystem": "core/browser + runner/runner.py",
+  "attack_class": "Resource and file handling (downloads)",
+  "starting_paths": [
+   "core/browser.py",
+   "runner/runner.py",
+   "applier/universal.py",
+   "applier/session.py"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+  "selected_companion_blocks": [
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#File descriptor, handle, and temporary-resource leaks",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release or plugin loading"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links or privileged helpers"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 3,
+  "status": "covered",
+  "agent_id": "h16-downloads",
+  "reviewed_paths": [
+   "applier/adapters/runner.py",
+   "applier/executors.py",
+   "applier/session.py",
+   "applier/universal.py",
+   "core/browser.py",
+   "runner/runner.py",
+   "scraper/indeed.py",
+   "scraper/linkedin.py",
+   "scraper/naukri.py",
+   "tracking/pipeline.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h16-downloads",
+    "reviewed_paths": [
+     "core/browser.py",
+     "runner/runner.py",
+     "applier/executors.py",
+     "applier/session.py",
+     "applier/universal.py",
+     "applier/adapters/runner.py",
+     "scraper/linkedin.py",
+     "scraper/indeed.py",
+     "scraper/naukri.py",
+     "tracking/pipeline.py"
+    ],
+    "invariant": "A download triggered by an untrusted job/ATS page must not be written to a retained or attacker-named location, must not be parsed or acted on by app code, and must not outlive the browser pass that produced it",
+    "method": "source",
+    "result": "Both launches pass accept_downloads=True to chromium.launch_persistent_context (core/browser.py:59-89; runner/runner.py:440-444) and no module registers page.on('download'), expect_download or reads a Download object (repo-wide grep: 'download' occurs only for the server-to-runner resume transfer in runner/runner.py:720-737, server/routes/runner.py and applier/runner_hub.py). With Playwright 1.63 (installed driver, coreBundle.js): the persistent-context launch sets downloadsPath to a fresh mkdtemp(os.tmpdir()/playwright-artifacts-*) (coreBundle.js:39724,39760) and tells Chromium Browser.setDownloadBehavior allowAndName into that folder (coreBundle.js:38582-38587), so downloads never land in the Opera/runner profile's real Downloads folder; each file is named by Playwright's uuid, with resolveWithinRoot rejecting any escaping name (coreBundle.js:52131-52133); BrowserContext.close unlinks every download via deleteOnContextClose (coreBundle.js:51895, 15491-15497) and cancels in-flight ones (coreBundle.js:38754); the artifacts folder itself is in tempDirectories and removed when the browser process exits (coreBundle.js:39761, 9326-9331). Every app context is closed in a finally: applier/executors.py:93-97 (ServerExecutor, one context per pass inside `with sync_playwright()`), runner/runner.py:445-451 (launch contextmanager, one browser per task, entered via ExitStack at runner/runner.py:700), scraper/linkedin.py:47,60, scraper/indeed.py:51, scraper/naukri.py:56,69 (scrapers only navigate platform search/login URLs, not job URLs). A job URL that itself answers Content-Disposition: attachment makes page.goto raise 'Download is starting' (coreBundle.js:37699), which universal.py's pass turns into an ordinary failure classified by applier/failures.py and retried once by the queue worker; no code path consumes the bytes. Remaining exposure is only transient temp-disk use on the host running the browser for the duration of one pass (server pass bounded by 30 s goto timeouts and LLM/form steps; runner pass may additionally hold the browser open up to MAX_PAUSES*HUMAN_WAIT_SECONDS = 30 min while a human clears a CAPTCHA, runner/runner.py:105-107,754), with no per-download size or count cap in Playwright or the app. That requires the owner (or autonomy) to apply to the attacker's listing, is deleted at ctx.close(), and does not cross a principal boundary, so it is recorded as hardening, not a finding. A bounded loopback fixture (scratch/work/fx/dl_check.py) could not run: the sandbox's 1 GiB address-space prlimit makes the Playwright node driver abort at V8 isolate creation ('Failed to reserve virtual memory for CodeRange'), so the storage/cleanup facts above are established from the installed driver source rather than observed; nothing decisive depends on that observation.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "x_critic_reason": "h15-browser uncovered lead",
+  "x_hardening": [
+   "core/browser.py:88 and runner/runner.py:441 enable accept_downloads=True although no code ever consumes a download; set accept_downloads=False (Chromium then denies downloads outright) or attach a page.on('download', lambda d: d.cancel()) handler in applier/executors.py ServerExecutor and runner/runner.py launch, so an untrusted ATS page cannot stream unbounded bytes into the host's temp directory for the lifetime of a pass (up to ~30 min on a runner waiting for a human). Regression case: a loopback fixture page that clicks three <a download> links; assert no file appears under tempfile.gettempdir()/playwright-artifacts-* while the pass runs.",
+   "Document in README/runner docs that Playwright redirects downloads away from the Opera/runner profile's real Downloads folder into a per-launch temp folder that is deleted on context close, so operators do not expect to find or need to clean downloaded files."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "core%2Fbrowser.py%23launch_browser%3Bapplier%2Funiversal.py%23_click_apply_button::core%2Fbrowser.py%23launch_persistent_context%28user_data_dir%3Dcfg.opera_data%28%29%29::core%2Fbrowser.py%2Bapplier%2Funiversal.py%2Bscraper::AI-AND-LLM.md%23Excessive%20agency%20and%20confused-deputy%20authority",
+  "canonical_refs": {
+   "surface": "core/browser.py#launch_browser;applier/universal.py#_click_apply_button",
+   "boundary": "core/browser.py#launch_persistent_context(user_data_dir=cfg.opera_data())",
+   "subsystem": "core/browser.py+applier/universal.py+scraper",
+   "attack_class": "AI-AND-LLM.md#Excessive agency and confused-deputy authority"
+  },
+  "surface": "Server-side Playwright automation inside the owner's persistent Opera profile",
+  "boundary": "Owner's real browser profile (all site cookies, extensions) versus untrusted job/ATS/redirect pages",
+  "subsystem": "core/browser + applier",
+  "attack_class": "Excessive agency and confused-deputy authority",
+  "starting_paths": [
+   "core/browser.py",
+   "core/config.py",
+   ".env.example",
+   "applier/session.py",
+   "applier/universal.py",
+   "applier/form_filler.py",
+   "applier/form_analyzer.py",
+   "applier/adapters/runner.py",
+   "applier/screenshotter.py",
+   "scraper/linkedin.py",
+   "scraper/indeed.py",
+   "scraper/naukri.py",
+   "runner/runner.py"
+  ],
+  "ordinary_attack_class_block": null,
+  "selected_companion_blocks": [
+   "AI-AND-LLM.md#Core discipline",
+   "AI-AND-LLM.md#Excessive agency and confused-deputy authority",
+   "AI-AND-LLM.md#Action-confirmation and approval binding",
+   "AI-AND-LLM.md#Universal moves",
+   "AI-AND-LLM.md#Validation rules",
+   "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+   "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Credential-store and local-secret boundary mismatch",
+   "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Universal moves",
+   "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository; only the in-repo decision to pass --no-sandbox is assessed"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 3,
+  "status": "candidate",
+  "agent_id": "h15-browser",
+  "reviewed_paths": [
+   ".env.example",
+   "applier/adapters/runner.py",
+   "applier/executors.py",
+   "applier/form_analyzer.py",
+   "applier/form_filler.py",
+   "applier/preflight.py",
+   "applier/screenshotter.py",
+   "applier/session.py",
+   "applier/universal.py",
+   "core/browser.py",
+   "core/config.py",
+   "db/jobs_db.py",
+   "runner/runner.py",
+   "scraper/indeed.py",
+   "scraper/linkedin.py",
+   "scraper/naukri.py",
+   "server/routes/apply.py",
+   "server/routes/jobs.py",
+   "tracking/pipeline.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h15-browser",
+    "reviewed_paths": [
+     "core/browser.py",
+     "core/config.py",
+     ".env.example",
+     "applier/session.py",
+     "applier/executors.py"
+    ],
+    "invariant": "Server-side automation that renders untrusted job/ATS pages runs in an isolated browser context with the Chromium renderer sandbox intact, no third-party extensions/sync, and downloads refused",
+    "method": "source",
+    "result": "Violated by configuration: core/browser.py launch_browser (lines 59-89) launches launch_persistent_context on cfg.opera_data() (the owner's real Opera Stable profile per .env.example OPERA_USER_DATA_DIR), passes args --no-sandbox and --disable-blink-features=AutomationControlled, removes --disable-extensions, --disable-sync, --disable-background-networking, --disable-default-apps and --disable-component-extensions-with-background-pages via ignore_default_args, and sets accept_downloads=True. applier/executors.py ServerExecutor.execute -> applier/session.py _open_browser (line 783) uses this launcher for every apply/refill/submit pass; scraper/{linkedin,indeed,naukri}.py scrape() use it for scraping. No alternative isolated context exists on the server path. Whether a renderer exploit or a malicious extension actually crosses to the owner's OS account is a third-party (Opera build/extension set) fact not observable in source, so this is recorded as hardening plus a needs_validation candidate rather than a confirmed finding.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h15-browser",
+    "reviewed_paths": [
+     "applier/universal.py",
+     "applier/adapters/runner.py",
+     "applier/form_filler.py",
+     "applier/form_analyzer.py",
+     "applier/screenshotter.py",
+     "applier/preflight.py"
+    ],
+    "invariant": "The origin the automation fills (profile PII typed, resume uploaded via set_input_files) is bound to the job the owner queued, and nothing is handed to a page before the human review step the code promises",
+    "method": "source",
+    "result": "Not enforced. applier/universal.py _click_apply_button (lines 521-551) clicks the first matching Apply selector, follows any popup via context.expect_page (line 537) or in-place navigation, and returns the new page with no comparison of its origin to job['url']; run_application (lines 153-190) then calls form_filler.execute on that page in iteration 1, before any review, typing profile values (form_filler.py lines 123-186) and attaching the resume to any file input (form_filler.py lines 95-109, set_input_files of resume_path or cfg.RESUME_PATH). The source itself states a 'human-review-before-anything-happens guarantee' (universal.py lines 42-46) but only applies it to CLICK_IS_TERMINAL platforms. Page JS on the landing origin can read typed values and the attached File before any submit. preflight.fetch_page (applier/preflight.py lines 165-188) returns (None, '') for non-http(s) or blocked URLs and _open then proceeds (lines 233-249), so preflight does not gate the scheme/origin passed to page.goto either. Selectors used for filling come from LLM output and DOM extraction (form_analyzer.py lines 28-63, 300-315) with no allowlist. Job URLs come only from scrapers (tracking/pipeline.py line 110 -> db/jobs_db.py add); no HTTP route inserts an arbitrary URL, so the attacker is the controller of a scraped listing/ATS page or of the page its Apply button leads to.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h15-browser",
+    "reviewed_paths": [
+     "scraper/linkedin.py",
+     "scraper/indeed.py",
+     "scraper/naukri.py",
+     "tracking/pipeline.py",
+     "db/jobs_db.py",
+     "server/routes/jobs.py",
+     "server/routes/apply.py"
+    ],
+    "invariant": "Only the owner can cause the server browser to open pages, and the URLs opened are constrained to the scraped platforms or their listing hrefs",
+    "method": "source",
+    "result": "Holds for the trigger: POST /api/pipeline/run, /api/apply/start, /answer, /submit require require_owner (server/routes/jobs.py 45-47, server/routes/apply.py 67-69, 118-120, 156-158). URLs are built from platform hrefs (linkedin.py 231-236, indeed.py 165-168, naukri.py 209-213) and are not scheme-validated before page.goto, but the href is produced by the platform DOM, not by a request parameter; a non-http scheme would need the platform to emit it. No cross-principal issue found here beyond the origin-binding gap recorded in the previous check.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h15-browser",
+    "reviewed_paths": [
+     "runner/runner.py"
+    ],
+    "invariant": "The runner's browser launch is the safer sibling: dedicated profile, sandbox intact",
+    "method": "source",
+    "result": "Partially. runner/runner.py launch (lines 431-451) uses a dedicated profile dir (DEFAULT_PROFILE ~/.apex_runner/profile) and does not pass --no-sandbox, but it reuses the same _KEEP_PROFILE_ARGS (lines 113-118) so extensions, sync and background networking stay enabled, and accept_downloads=True. It drives the same universal.py passes (run_pass lines 454-485), so the origin-binding gap applies to the runner equally, although there the exposed profile is a fresh one rather than the owner's daily browser.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "applier/universal.py:run_application:pre-review-fill-and-resume-upload-into-unverified-apply-landing-origin"
+  ],
+  "unresolved": [],
+  "x_critic_reason": "critic-w2 missing unit",
+  "x_failed_attempts": [
+   "h14-browser returned no result (its instruction-file read was blocked by a tool safety check); unit reassigned to a fresh hunter with no evidence carried"
+  ],
+  "x_hardening": [
+   "core/browser.py launch_browser: drop --no-sandbox (it is unnecessary on a desktop profile and removes the renderer sandbox for every untrusted ATS page); do not strip --disable-extensions/--disable-sync/--disable-background-networking/--disable-default-apps; set accept_downloads=False (or a downloads_path with a reject handler) since no code path consumes downloads.",
+   "core/browser.py: launch the server automation in a dedicated profile directory (e.g. data/browser_profile) as runner/runner.py already does, and copy only the scoped encrypted site cookies (load_cookies) into it instead of exposing the owner's entire Opera profile (all site sessions, passwords, extensions).",
+   "applier/universal.py _click_apply_button / run_application: after the Apply click, compare the landing page's origin with the job URL host or an allowlist of known ATS hosts (applier/site_type.py already knows them) and stop with a review-needed state on mismatch; also validate the job URL scheme is http(s) before page.goto rather than relying on preflight, which ignores validate_base_url failures.",
+   "applier/universal.py run_application: defer resume set_input_files (and ideally all typing) to the post-approval submit pass, or at least gate the file upload on review approval, so the documented human-review-before-anything-happens guarantee holds for form-based platforms as it does for CLICK_IS_TERMINAL ones.",
+   "runner/runner.py launch: same extension/sync/downloads flags as above; the dedicated profile is good but the page still runs with extensions enabled by default.",
+   "core/browser.py launch_browser: the 'tasklist' shell check (line 39) is Windows-only and silently no-ops elsewhere; on other platforms an already-running Opera on the same profile will make launch_persistent_context fail with an unclear error."
+  ],
+  "x_uncovered": [
+   {
+    "surface": "Download handling in both browser launches (accept_downloads=True with no download listener)",
+    "boundary": "Untrusted ATS/job page versus server (or runner) filesystem",
+    "subsystem": "core/browser + runner/runner.py",
+    "attack_class": "ATTACK-CLASSES.md#Resource and file handling",
+    "starting_paths": [
+     "core/browser.py",
+     "runner/runner.py"
+    ],
+    "reason": "A page can trigger arbitrary downloads that Playwright stores to its temp artifacts directory for the context lifetime; whether this reaches disk-quota or persistent-path concerns depends on Playwright's download storage behaviour and belongs to a resource/file-handling unit, not the confused-deputy unit."
+   }
+  ]
+ },
+ {
+  "coverage_id": "core%2Fcrypto.py%23encrypt%3Bserver%2Froutes%2Fsettings.py%23GET%20%2Fapi%2Fsettings%2C%2Fapi%2Fsettings%2Fraw::db%2Fsettings_db.py%23is_secret_key::core%2Fcrypto.py%2Bdb%2Fsettings_db.py::ATTACK-CLASSES.md%23Cryptography%20and%20secrets",
+  "canonical_refs": {
+   "surface": "core/crypto.py#encrypt;server/routes/settings.py#GET /api/settings,/api/settings/raw",
+   "boundary": "db/settings_db.py#is_secret_key",
+   "subsystem": "core/crypto.py+db/settings_db.py",
+   "attack_class": "ATTACK-CLASSES.md#Cryptography and secrets"
+  },
+  "surface": "Secrets at rest and in responses",
+  "boundary": "Secret handling",
+  "subsystem": "core/crypto",
+  "attack_class": "Cryptography and secrets",
+  "starting_paths": [
+   "core/crypto.py",
+   "db/settings_db.py",
+   "server/routes/settings.py",
+   "core/browser.py",
+   "db/resumes_db.py",
+   "core/runner_auth.py",
+   "core/notifier.py"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Cryptography and secrets",
+  "selected_companion_blocks": [],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "covered",
+  "agent_id": "h04-webauth",
+  "reviewed_paths": [
+   "core/browser.py",
+   "core/crypto.py",
+   "core/notifier.py",
+   "core/runner_auth.py",
+   "db/resumes_db.py",
+   "db/runner_db.py",
+   "db/settings_db.py",
+   "server/routes/notifications.py",
+   "server/routes/settings.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h04-webauth",
+    "reviewed_paths": [
+     "core/crypto.py"
+    ],
+    "invariant": "Secrets at rest use authenticated encryption with a non-public key, and crypto-failure paths do not silently downgrade to plaintext for attacker-supplied data.",
+    "method": "source",
+    "result": "Fernet (AES128-CBC + HMAC, authenticated) with key from APP_ENCRYPTION_KEY env or an auto-generated persisted data/.master.key chmod 600 (core/crypto.py:50-71). encrypt() prefixes 'enc:'. decrypt() returns '' on InvalidToken (fails closed, no plaintext leak) and logs the cause once without the key. decrypt_bytes() returns the input unchanged only on InvalidToken — a deliberate migration path for pre-existing plaintext cookie files; callers that matter re-validate the result (resumes_db enforces a %PDF- signature; cookie loader json.loads which fails on ciphertext). No static IV / ECB / unauthenticated mode; no hardcoded key.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h04-webauth",
+    "reviewed_paths": [
+     "db/settings_db.py",
+     "server/routes/settings.py"
+    ],
+    "invariant": "Every secret setting is classified as secret, stored encrypted, masked on read, and cannot be read back verbatim.",
+    "method": "source",
+    "result": "is_secret_key (db/settings_db.py:46) flags any key containing 'api_key' or ending _token/_password, covering all provider keys, custom-provider keys, notify_smtp_password and notify_telegram_bot_token. write() encrypts secret values at rest (line 612); _maybe_decrypt decrypts only internally. GET /api/settings masks secrets to a dotted prefix plus the last 4 chars (server/routes/settings.py:35); GET /api/settings/raw/{key} hard-refuses secret keys with 403 (line 58); GET /api/settings/providers and all_providers return no key material (test_custom_provider_lifecycle asserts the raw key is absent). save_settings skips blank/masked secrets so a re-submitted mask cannot clobber the stored key. No full secret reaches a client-visible response.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h04-webauth",
+    "reviewed_paths": [
+     "core/runner_auth.py",
+     "db/runner_db.py"
+    ],
+    "invariant": "Runner bearer tokens use strong randomness and are stored/compared as non-reversible hashes with no timing side-channel on the secret.",
+    "method": "source",
+    "result": "new_token() = 'apxr_' + secrets.token_urlsafe(32) (256 bits CSPRNG; db/runner_db.py:109). Only SHA-256(token) is stored (UNIQUE), shown once on creation; authenticate() looks up by digest on an indexed column and never returns or logs the token. parse_bearer requires exactly 'Bearer <token>', rejects other schemes; length-capped at 200 before hashing. Revocation and account-active are re-checked on every authenticate. No weak randomness, no reversible storage.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h04-webauth",
+    "reviewed_paths": [
+     "core/browser.py",
+     "db/resumes_db.py"
+    ],
+    "invariant": "Job-site cookies and resume PDFs/text are encrypted at rest, and reads refuse unauthenticated-plaintext substitution.",
+    "method": "source",
+    "result": "save_cookies encrypts the cookie JSON with encrypt_bytes (core/browser.py:124); load_cookies decrypts, tolerating legacy plaintext only via the Fernet-token check. Resumes: PDF bytes and extracted text both encrypted (db/resumes_db.py:200-203); random on-disk filename; read() refuses a stored file that still starts with %PDF- (never encrypted) and refuses output that does not decrypt to a %PDF- signature, so a dropped-in plaintext file is rejected rather than used. Plaintext exists only in a 0700 tmpdir/0600 file inside a with-block with guaranteed cleanup and stale sweep.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h04-webauth",
+    "reviewed_paths": [
+     "core/notifier.py",
+     "server/routes/notifications.py"
+    ],
+    "invariant": "Notification secrets are masked in responses and never written to logs, error messages, or outbound URLs that surface to clients.",
+    "method": "source",
+    "result": "public_config replaces notify_smtp_password and notify_telegram_bot_token with a mask (core/notifier.py:124-131); GET/PUT /api/notifications/settings are require_owner and return only public_config. Delivery failures are logged by exception TYPE only (deliver line 288, test_channel line 312), and DeliveryError/NotifyError are documented and coded to carry no secret or server reply; the Telegram bot token lives in the request URL but that URL is never logged or returned. SMTP host is re-validated at send time (validate_smtp_host).",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "x_hardening": [
+   "GET /api/settings (server/routes/settings.py:35) returns a dotted prefix plus the last 4 characters of each DECRYPTED secret (API keys, notify_smtp_password, notify_telegram_bot_token). Last-4 masking is industry-standard for high-entropy keys but is still cleartext secret material in a client-visible response; for user-chosen secrets like an SMTP password consider masking with no trailing cleartext.",
+   "POST /api/auth/logout (server/routes/auth.py:82) only clears the cookie and does not bump session_version, so a signed session token obtained out-of-band remains valid for its full 14-day max_age after the user logs out; change-password and logout-everywhere do revoke server-side. HttpOnly+Secure limit token capture, but bumping session_version on logout would give parity and true revocation.",
+   "WebSocket /ws/{job_id} (server/websocket.py:57) authenticates the session and enforces job ownership but performs no Origin allowlist check; cross-origin hijack is currently prevented only by the SameSite=Lax session cookie not being attached to cross-site WS handshakes, and the handler is read-only. An explicit Origin/Host check would add defense in depth independent of browser SameSite behavior.",
+   "The application has no CSRF token and no Origin/Referer validation on any route (server/app.py); CSRF protection relies solely on the explicit SameSite=Lax session cookie (core/auth.py:145). This is effective for the non-GET JSON/multipart mutations actually used, but it is a single layer — an anti-CSRF token or Origin check on state-changing routes would harden against future SameSite regressions or a route added with a Lax-permitted method.",
+   "The session throttle (core/throttle.py) is in-memory and per-process and the login IP is request.client.host; behind a reverse proxy without uvicorn --proxy-headers/--forwarded-allow-ips every client shares one bucket. This is documented in the module and is a deployment-config concern, not a source defect."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "core%2Furlcheck.py%23validate_base_url%3Bcore%2Fnotifier.py%23send%3Bapplier%2Fpreflight.py%23check::core%2Furlcheck.py%23validate_base_url::core%2Furlcheck.py%2Bcore%2Fnotifier.py%2Bapplier%2Fpreflight.py::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+  "canonical_refs": {
+   "surface": "core/urlcheck.py#validate_base_url;core/notifier.py#send;applier/preflight.py#check",
+   "boundary": "core/urlcheck.py#validate_base_url",
+   "subsystem": "core/urlcheck.py+core/notifier.py+applier/preflight.py",
+   "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+  },
+  "surface": "Outbound fetches (LLM base URLs, custom providers, SMTP, Telegram, preflight, Playwright goto)",
+  "boundary": "SSRF boundary",
+  "subsystem": "core",
+  "attack_class": "SSRF",
+  "starting_paths": [
+   "core/urlcheck.py",
+   "server/routes/settings.py",
+   "db/settings_db.py",
+   "core/llm.py",
+   "core/notifier.py",
+   "applier/preflight.py",
+   "applier/universal.py"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+  "selected_companion_blocks": [],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "covered",
+  "agent_id": "h06-ssrf",
+  "reviewed_paths": [
+   "applier/preflight.py",
+   "applier/session.py",
+   "applier/universal.py",
+   "core/llm.py",
+   "core/notifier.py",
+   "core/urlcheck.py",
+   "db/jobs_db.py",
+   "db/settings_db.py",
+   "scraper/indeed.py",
+   "scraper/linkedin.py",
+   "scraper/naukri.py",
+   "server/routes/apply.py",
+   "server/routes/notifications.py",
+   "server/routes/onboarding.py",
+   "server/routes/settings.py",
+   "tracking/pipeline.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h06-ssrf",
+    "reviewed_paths": [
+     "server/routes/settings.py",
+     "db/settings_db.py",
+     "server/routes/notifications.py",
+     "server/routes/onboarding.py"
+    ],
+    "invariant": "Only the owner can set an outbound destination (LLM *_base_url, custom-provider base_url, probe base_url, SMTP host, Telegram token/chat); no non-owner or unauthenticated path writes these settings",
+    "method": "source",
+    "result": "POST /api/settings, custom-providers, models*, test-llm and fetch-models all Depends(require_owner) (settings.py:73,164,174,201,211,262,276); managed keys/prefixes keep custom_providers and notify_* out of the generic save (settings.py:67-78); /api/notifications/* are require_owner (notifications.py:32,37,50). Other SettingsDB writers are server bookkeeping only. Non-owner onboarding routes do not write URL or host settings.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h06-ssrf",
+    "reviewed_paths": [
+     "core/urlcheck.py",
+     "core/llm.py"
+    ],
+    "invariant": "validate_base_url rejects every spelling of a cloud-metadata or link-local host that the outbound HTTP client will connect to",
+    "method": "local",
+    "result": "Owner-only bypass: hosts written with IDNA label separators U+3002/U+FF0E/U+FF61 (e.g. http://169。254。169。254/) pass _as_ip/_BLOCKED_HOSTS (urlcheck.py:104-107); httpx normalises them and the OpenAI client opened a socket to 169.254.169.254. ASCII form rejected; SMTP validator's ASCII regex refuses these spellings. Same-principal (owner) only, so hardening.",
+    "artifact": "agents/h06-ssrf/artifacts/work/evidence/urlcheck_idna_redirect.json"
+   },
+   {
+    "agent_id": "h06-ssrf",
+    "reviewed_paths": [
+     "applier/preflight.py",
+     "core/llm.py"
+    ],
+    "invariant": "A URL that passed validate_base_url cannot be redirected by the remote end to a blocked address",
+    "method": "local",
+    "result": "Not enforced: a loopback 302 to 169.254.169.254 was followed by preflight.fetch_page (urllib, preflight.py:172-181) and by the OpenAI SDK (follow_redirects default). Blind impact only (response feeds the closed-job check or an owner-visible error; httpx strips Authorization cross-origin; GCP/Azure metadata need headers not sent). Recorded as hardening.",
+    "artifact": "agents/h06-ssrf/artifacts/work/evidence/urlcheck_idna_redirect.json"
+   },
+   {
+    "agent_id": "h06-ssrf",
+    "reviewed_paths": [
+     "applier/preflight.py",
+     "applier/session.py",
+     "server/routes/apply.py",
+     "scraper/linkedin.py",
+     "scraper/indeed.py",
+     "scraper/naukri.py",
+     "tracking/pipeline.py",
+     "db/jobs_db.py",
+     "applier/universal.py"
+    ],
+    "invariant": "Untrusted content cannot pick the destination of a server-side preflight fetch or Playwright goto",
+    "method": "source",
+    "result": "Job URLs enter only via the owner's scrape pipeline (only INSERT INTO jobs at db/jobs_db.py:415 from tracking/pipeline.py), built from the board's own card href with the board base URL; set_hunt cannot change url; preflight/apply start only from require_owner routes (apply.py:69,120,158) or the owner's queue. A job poster has no source-visible control of job['url'] host.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h06-ssrf",
+    "reviewed_paths": [
+     "core/notifier.py",
+     "core/urlcheck.py"
+    ],
+    "invariant": "SMTP and Telegram sinks cannot be steered to metadata or arbitrary hosts",
+    "method": "source",
+    "result": "SMTP host validated at save (notifier.py:192) and before connect (notifier.py:242); Telegram URL has fixed host api.telegram.org with regex-checked token/chat id (notifier.py:265-268); owner-only configuration.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "x_hardening": [
+   "core/urlcheck.py validate_base_url (104-107) accepts hosts written with IDNA label separators (U+3002, U+FF0E, U+FF61), e.g. http://169。254。169。254/; httpx/OpenAI connect to 169.254.169.254 (owner-only input). Fix: reject non-ASCII hosts or IDNA/UTS46-encode before the IP/blocklist checks.",
+   "Redirects are followed without revalidation: applier/preflight.py fetch_page (urllib) and the OpenAI clients in core/llm.py (follow_redirects=True). Fix: a redirect handler that revalidates, or httpx.Client(follow_redirects=False).",
+   "applier/universal.py page.goto(job['url']) (111, 247, 342) has no scheme/host check; add the same http(s)/no-metadata check as preflight.",
+   "validate_base_url does not check DNS resolution (documented at core/urlcheck.py:16-19); a connect-time check in a custom transport would close it and the redirect gap."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "db%2F%2A.py%23queries::db%2Fjobs_db.py%23parameterized%20SQL::db::ATTACK-CLASSES.md%23Injection",
+  "canonical_refs": {
+   "surface": "db/*.py#queries",
+   "boundary": "db/jobs_db.py#parameterized SQL",
+   "subsystem": "db",
+   "attack_class": "ATTACK-CLASSES.md#Injection"
+  },
+  "surface": "SQL and other server-side injection sinks",
+  "boundary": "Query construction",
+  "subsystem": "db",
+  "attack_class": "Injection",
+  "starting_paths": [
+   "db",
+   "server/routes",
+   "core/notifier.py",
+   "core/browser.py"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Injection",
+  "selected_companion_blocks": [],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "covered",
+  "agent_id": "h07-injection",
+  "reviewed_paths": [
+   "core/browser.py",
+   "core/notifier.py",
+   "core/shutdown.py",
+   "db/answer_bank_db.py",
+   "db/autonomy_db.py",
+   "db/follow_ups_db.py",
+   "db/hunt.py",
+   "db/jobs_db.py",
+   "db/kits_db.py",
+   "db/notifications_db.py",
+   "db/outcomes_db.py",
+   "db/prep_db.py",
+   "db/profile_db.py",
+   "db/resumes_db.py",
+   "db/review_db.py",
+   "db/runner_db.py",
+   "db/settings_db.py",
+   "db/users_db.py",
+   "main.py",
+   "server/routes/onboarding.py",
+   "server/routes/settings.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h07-injection",
+    "reviewed_paths": [
+     "db/jobs_db.py",
+     "db/prep_db.py",
+     "db/follow_ups_db.py",
+     "db/autonomy_db.py",
+     "db/answer_bank_db.py",
+     "db/notifications_db.py",
+     "db/runner_db.py",
+     "db/kits_db.py",
+     "db/hunt.py"
+    ],
+    "invariant": "No caller-supplied value or key becomes SQL text. Dynamic identifiers (SET column lists, INSERT columns, WHERE fragments, IN placeholders) must come only from fixed allow-lists or placeholder counts.",
+    "method": "local",
+    "result": "Every f-string or concatenated SQL in db/ uses only fixed allow-lists or placeholder counts: set_hunt (hunt.HUNT_FIELDS via clean_hunt), offers create/update (clean_offer allow-list), autonomy update_rule (UPDATABLE_RULE_FIELDS), the follow_ups and prep _change/_finish sets (constant literals), IN lists ('?'*n), _and/_where (constant column), list_applications stages (validated against lifecycle.STAGES), answer_bank scope/source (validated) and LIKE values (bound, with ESCAPE), and ALTER TABLE (constant column list). The sandboxed harness against a temp jobs.db with two dummy users confirmed this. Injected keys were rejected by set_hunt, offer create/update and autonomy update_rule. Stage, scope and source payloads raised ValueError. q, source and title payloads (including '%') were bound literally and returned no rows. A cross-user set_hunt raised LookupError. The DB rows were unchanged: user 2's job and the offer user_id were intact.",
+    "artifact": "agents/h07-injection/artifacts/work/evidence/sql-parameterization.json"
+   },
+   {
+    "agent_id": "h07-injection",
+    "reviewed_paths": [
+     "db/profile_db.py",
+     "db/settings_db.py",
+     "db/users_db.py",
+     "db/review_db.py",
+     "db/resumes_db.py",
+     "db/outcomes_db.py",
+     "server/routes/settings.py",
+     "server/routes/onboarding.py"
+    ],
+    "invariant": "Key-value stores whose keys come from requests (settings keys, profile field keys, custom-provider slugs) must bind those keys as parameters, never interpolate them.",
+    "method": "source",
+    "result": "Settings, profile, users, review, resumes and outcomes queries all use ? placeholders for keys and values. The custom-provider f-strings in settings_db.py:421-581 build key VALUES that are then bound, not SQL text. Routes in server/ issue no SQL directly, and no SQL runs outside db/ (grep over server, core, applier, intelligence, tracking).",
+    "artifact": null
+   },
+   {
+    "agent_id": "h07-injection",
+    "reviewed_paths": [
+     "core/notifier.py",
+     "core/browser.py",
+     "core/shutdown.py",
+     "main.py"
+    ],
+    "invariant": "No shell, header, message-format or template injection from stored data into secondary systems.",
+    "method": "source",
+    "result": "The SMTP path uses EmailMessage with the default policy: header values are a constant-format Subject plus owner-set From/To, and the policy rejects CR/LF in headers. Telegram sends JSON {chat_id, text} with no parse_mode, so the text is not interpreted as markup. Subject templates are constants formatted only with integers (notifier.py:324). The only shell=True call is the constant 'tasklist' (browser.py:39). taskkill/Popen use argument lists with a PID or internal argv. Playwright launch args are constants; cookie files are encrypted JSON passed to add_cookies.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "x_hardening": [
+   "frontend/src/components/applications/Workspace.jsx:33 and SidePanel.jsx:96/116: the ?job= query value goes unencoded into fetch paths, which is a client-side path traversal primitive (../../../api/settings?x= resolves to /api/settings). The only reachable unsafe request today is a victim-clicked Notes POST with the fixed body {note}, which has no security effect. Wrap jobId in encodeURIComponent, or validate ^[0-9a-f]{16}$ before setOpenId, so a future GET+POST endpoint cannot be reached this way.",
+   "server/app.py sets no X-Frame-Options / CSP frame-ancestors. Clickjacking is currently blocked for cross-site framers by the SameSite=Lax session cookie (core/auth.py:145), but a same-site origin (e.g. another port on the same host) could frame the Approve/Submit UI. Add 'Content-Security-Policy: frame-ancestors none' (and X-Frame-Options: DENY) in a response middleware.",
+   "templates/setup.html:243 builds row.innerHTML from interpolated values with no escaping. It is not served today; delete the file so it cannot be re-mounted.",
+   "safeHref (frontend/src/lib/live.js:65) correctly limits job links to http(s), but any http(s) destination is allowed. That is acceptable because every anchor uses rel=noopener noreferrer."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "db%2Flifecycle.py%23transition%3Bapplier%2Fqueue_worker.py%23run%3Bserver%2Froutes%2Fapply.py%23submit::applier%2Fqueue_worker.py%23daily_limit::applier%2Fqueue_worker.py%2Bdb%2Flifecycle.py::ATTACK-CLASSES.md%23Business%20logic",
+  "canonical_refs": {
+   "surface": "db/lifecycle.py#transition;applier/queue_worker.py#run;server/routes/apply.py#submit",
+   "boundary": "applier/queue_worker.py#daily_limit",
+   "subsystem": "applier/queue_worker.py+db/lifecycle.py",
+   "attack_class": "ATTACK-CLASSES.md#Business logic"
+  },
+  "surface": "Application lifecycle, queue, limits and dry run",
+  "boundary": "Business rules (dry run, daily limit, owner-only submit)",
+  "subsystem": "applier+db",
+  "attack_class": "Business logic",
+  "starting_paths": [
+   "db/lifecycle.py",
+   "db/jobs_db.py",
+   "applier/queue_worker.py",
+   "server/routes/apply.py",
+   "server/routes/review.py",
+   "server/routes/queue.py",
+   "server/routes/applications.py",
+   "applier/autonomy.py"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Business logic",
+  "selected_companion_blocks": [
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Worker, pool, and priority starvation",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Poison-record and head-of-line blocking",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "h08-logic",
+  "reviewed_paths": [
+   "applier/autonomy.py",
+   "applier/executors.py",
+   "applier/queue_worker.py",
+   "applier/runner_hub.py",
+   "applier/session.py",
+   "applier/universal.py",
+   "db/autonomy_db.py",
+   "db/jobs_db.py",
+   "db/lifecycle.py",
+   "db/runner_db.py",
+   "db/settings_db.py",
+   "server/routes/applications.py",
+   "server/routes/apply.py",
+   "server/routes/assist.py",
+   "server/routes/queue.py",
+   "server/routes/review.py",
+   "server/routes/settings.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h08-logic",
+    "reviewed_paths": [
+     "db/lifecycle.py",
+     "db/jobs_db.py"
+    ],
+    "invariant": "Every stage change goes through lifecycle.TRANSITIONS and is applied atomically (conditional UPDATE ... WHERE stage=? plus optional from_stages) so steps cannot be skipped backwards, terminal rejected/withdrawn cannot be reopened, and concurrent movers cannot double-apply a move.",
+    "method": "source",
+    "result": "JobsDB.transition validates actor/reason, checks lifecycle.check(frm,to) and updates with WHERE job_id=? AND stage=? (+user scope), raising IllegalTransition on rowcount!=1; applied_at is set only on the move to submitted. rejected/withdrawn have no outgoing moves. No illegal path found.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h08-logic",
+    "reviewed_paths": [
+     "applier/queue_worker.py",
+     "server/routes/queue.py"
+    ],
+    "invariant": "Queue claim/unqueue/restart-recovery/auto-retry are atomic and bounded: a job is claimed once (queued->preparing with from_stages), the quality gate is re-checked at claim time, retries are capped from the audit trail, and only the owner's queue is driven.",
+    "method": "source",
+    "result": "queue_jobs/unqueue_jobs/_claim/_maybe_retry/recover all use conditional transitions; step() re-applies quality_gate before claiming; auto_retry_count derives from events so restarts grant no extra retries; QueueWorker is constructed for OWNER_USER_ID with a scoped JobsDB and shares apply.py's per-job lock. Queue/unqueue/pause/resume are require_owner.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h08-logic",
+    "reviewed_paths": [
+     "server/routes/apply.py",
+     "server/routes/review.py",
+     "server/routes/applications.py",
+     "server/routes/assist.py"
+    ],
+    "invariant": "Only the owner can start, answer, approve or submit (drive the browser), and non-owner reachable state changes (transition, mark-applied, skip, reject) cannot cause a browser run or a submission.",
+    "method": "source",
+    "result": "start/answer/submit/approve depend on require_owner and _get_job scopes the job to the caller. POST /api/applications/{id}/transition and mark-applied are session-only but only record stages on the caller's own jobs; moving found->queued there bypasses the owner-only queue route and the quality gate, but the worker only reads the owner's queue and re-checks the gate, so no browser run results. Recorded as hardening.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h08-logic",
+    "reviewed_paths": [
+     "applier/autonomy.py",
+     "applier/session.py",
+     "applier/executors.py",
+     "applier/runner_hub.py",
+     "db/runner_db.py",
+     "db/autonomy_db.py",
+     "applier/queue_worker.py",
+     "db/jobs_db.py"
+    ],
+    "invariant": "Unattended autonomy submissions never exceed the effective daily apply cap (queue_worker.daily_limit) when not in dry run.",
+    "method": "local",
+    "result": "Violated with executor=runner. Repo fixture (tests/test_runner.HubBase), quality_first=true, daily_apply_limit=2 (effective cap 2), dry_run=false, one enabled '*' rule (max_per_day 100). The worker claimed all 5 queued jobs in 5 consecutive steps (no pacing for runner-deferred passes), creating 5 apply tasks; the FIFO claim order processed every apply result before any submit, each auto-approval saw count_applied_today()==0, 5 submit tasks were enqueued and 5 jobs reached 'submitted' (count 5 vs cap 2, 0 autonomy_blocked steps).",
+    "artifact": "agents/h08-logic/artifacts/work/evidence/autonomy_runner_daily_cap.json"
+   },
+   {
+    "agent_id": "h08-logic",
+    "reviewed_paths": [
+     "applier/queue_worker.py",
+     "applier/session.py",
+     "server/routes/apply.py",
+     "server/routes/settings.py",
+     "db/settings_db.py"
+    ],
+    "invariant": "The dry_run flag is parsed identically by every component that decides whether limits apply and whether Submit is clicked.",
+    "method": "source",
+    "result": "queue_worker.is_dry_run strips whitespace, while Orchestrator._dry_run_enabled and apply._settings_dry_run do not; POST /api/settings stores dry_run verbatim (only quality_first is normalised). A value such as 'true ' makes the worker and autonomy treat the run as dry (limit lifted) while the Orchestrator submits for real. Only the owner can write that value and the UI writes exact 'true'/'false', so this is hardening, not a finding.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h08-logic",
+    "reviewed_paths": [
+     "applier/queue_worker.py",
+     "applier/universal.py"
+    ],
+    "invariant": "A single malformed or hostile job cannot hold the single queue worker indefinitely or wedge the queue (poison record / head-of-line).",
+    "method": "source",
+    "result": "_run_job catches every exception and settles the job to failed (one retry with backoff, then left failed); a quality-gate failure is released to found; page.goto uses 30s timeouts and form waits are bounded loops; only the owner's own queue is affected. No unbounded hold found.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "applier/autonomy.py:consider_auto_approval:daily-cap-ignores-in-flight-runner-submits"
+  ],
+  "unresolved": [],
+  "x_hardening": [
+   "dry_run is parsed inconsistently: applier/queue_worker.is_dry_run strips whitespace but applier/session.Orchestrator._dry_run_enabled and server/routes/apply._settings_dry_run do not, and POST /api/settings stores dry_run verbatim. A value such as 'true ' lifts the daily limit in the worker and autonomy while the Orchestrator really submits. Normalise dry_run to true/false on save (like quality_first) and parse it with one helper. Only the owner can write it, and the UI writes exact values.",
+   "server/routes/apply._enforce_rate_limits uses unscoped JobsDB(), so the owner's daily limit and min-delay count every user's applied_at rows. There is no production path for a non-owner to create jobs today (only the owner-only pipeline inserts), so this cannot be exploited now. If per-user job creation is ever added, a non-owner could exhaust the owner's submit limit. Scope it to the owner.",
+   "daily_apply_limit and min/max_delay_between_applies are not validated on POST /api/settings. A negative daily_apply_limit with quality_first off behaves as unlimited (cap > 0 check). Validate them as non-negative integers.",
+   "The /api/apply/submit cap and min-delay check is check-then-act. Parallel owner submits for different job ids (each takes only its own per-job lock) can all pass before any completes, and autonomy submits never check min_delay_between_applies. Owner-driven only.",
+   "POST /api/applications/{id}/transition (session-only) lets any user move their own job found->queued or ->preparing, which bypasses the owner-only queue route and the quality gate. The worker reads only the owner's queue and re-checks the gate before claiming, so nothing runs. Consider restricting user-initiated targets to the stages the UI needs.",
+   "JobsDB.clear_all leaves job_notes and job_briefs (default branch), plus application_kits, autonomy_attempts and runner_tasks (both branches), keyed by job_id. Re-scraping the same URL recreates the same unscoped job_id and reattaches the old notes, brief and kit for the same owner. Delete or tombstone them with the job."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "frontend%2Fsrc%23rendering::frontend%2Fsrc%2Flib%2Flive.js%23safeHref::frontend%2Fsrc::CLIENT-SIDE.md%23DOM-based%20XSS",
+  "canonical_refs": {
+   "surface": "frontend/src#rendering",
+   "boundary": "frontend/src/lib/live.js#safeHref",
+   "subsystem": "frontend/src",
+   "attack_class": "CLIENT-SIDE.md#DOM-based XSS"
+  },
+  "surface": "Frontend rendering of stored and scraped content",
+  "boundary": "Browser origin of the app",
+  "subsystem": "frontend",
+  "attack_class": "DOM-based XSS",
+  "starting_paths": [
+   "frontend/src/app",
+   "frontend/src/components",
+   "frontend/src/lib",
+   "frontend/next.config.mjs"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Injection",
+  "selected_companion_blocks": [
+   "CLIENT-SIDE.md#Core discipline",
+   "CLIENT-SIDE.md#DOM-based XSS",
+   "CLIENT-SIDE.md#Client-side navigation confusion",
+   "CLIENT-SIDE.md#Clickjacking",
+   "CLIENT-SIDE.md#Browser-storage disclosure and stale authorization",
+   "CLIENT-SIDE.md#Universal moves",
+   "CLIENT-SIDE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "covered",
+  "agent_id": "h07-injection",
+  "reviewed_paths": [
+   "core/auth.py",
+   "core/checklist.py",
+   "db/runner_db.py",
+   "frontend/next.config.mjs",
+   "frontend/src/app/layout.jsx",
+   "frontend/src/app/page.jsx",
+   "frontend/src/components/applications/ApplyTab.jsx",
+   "frontend/src/components/applications/ReviewPanel.jsx",
+   "frontend/src/components/applications/SidePanel.jsx",
+   "frontend/src/components/applications/Workspace.jsx",
+   "frontend/src/components/layout/AppShell.jsx",
+   "frontend/src/lib/api.js",
+   "frontend/src/lib/live.js",
+   "frontend/src/lib/prefs.js",
+   "server/app.py",
+   "server/routes/onboarding.py",
+   "server/routes/review.py",
+   "server/routes/runner_tokens.py",
+   "server/routes/settings.py",
+   "templates/setup.html"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h07-injection",
+    "reviewed_paths": [
+     "frontend/src/lib/live.js",
+     "frontend/src/lib/prefs.js",
+     "frontend/src/app/layout.jsx",
+     "frontend/src/components/layout/AppShell.jsx"
+    ],
+    "invariant": "No attacker-influenced data reaches an HTML or script sink. The only dangerouslySetInnerHTML is INIT_SCRIPT, and it must be built only from constants. Values read from localStorage must be whitelisted before they touch the DOM or CSS.",
+    "method": "source",
+    "result": "INIT_SCRIPT (prefs.js:78-80) is made from applyPrefs.toString(), JSON.stringify of a constant STORAGE_KEY and the constant THEME_IDS. Nothing from storage or the server goes into the script text. At runtime applyPrefs checks theme, density, radius, size, motion and glow against fixed lists. accent must match ^#[0-9a-fA-F]{6}$ before setProperty is called. localStorage holds only these appearance prefs, which carry no authority. No innerHTML, outerHTML, document.write, eval, new Function, insertAdjacentHTML or DOMParser exists anywhere in frontend/src. All scraped or LLM text (description, brief, ai_score_reason, notes, logs, assist pack fields, cover letters) is rendered as React text children, so it is escaped.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h07-injection",
+    "reviewed_paths": [
+     "frontend/src/lib/live.js",
+     "frontend/src/components/applications/SidePanel.jsx",
+     "frontend/src/components/applications/ApplyTab.jsx",
+     "frontend/src/components/applications/ReviewPanel.jsx",
+     "server/routes/review.py",
+     "frontend/src/app/page.jsx",
+     "core/checklist.py"
+    ],
+    "invariant": "Every href or src built from scraped or server data must be limited to http(s) or to a fixed same-origin prefix, and external links must keep noopener.",
+    "method": "local",
+    "result": "The job-URL anchors in SidePanel.jsx:31/49 and ApplyTab.jsx:42/47 and :143/156 go through safeHref and use rel=noopener noreferrer. The sandboxed node check pulled safeHref out of live.js. It returned '' for javascript:, JaVaScRiPt:, a leading-space javascript:, data:, //evil, a tab-prefixed URL, https:alert(1), null and undefined, and passed only http(s) URLs. The other link sinks are also fixed: mailto:${contact_email} has a fixed scheme prefix and the address is regex-validated in db/hunt.py:132. Screenshot links are /screenshots/<name> (review.py:64; encodeURIComponent in SidePanel.jsx:86). Checklist hrefs are constants (core/checklist.py:70-83). NAV links are constants.",
+    "artifact": "agents/h07-injection/artifacts/work/evidence/frontend-safehref-cspt.json"
+   },
+   {
+    "agent_id": "h07-injection",
+    "reviewed_paths": [
+     "frontend/src/components/applications/Workspace.jsx",
+     "frontend/src/components/applications/SidePanel.jsx",
+     "frontend/src/lib/api.js",
+     "server/routes/settings.py",
+     "server/routes/runner_tokens.py",
+     "db/runner_db.py",
+     "server/routes/onboarding.py"
+    ],
+    "invariant": "A navigation source the attacker controls (the ?job= query) must not redirect same-origin credentialed requests to a different API endpoint in a way that has security impact.",
+    "method": "local",
+    "result": "There is a client-side path traversal primitive. ?job= goes into fetch paths without encodeURIComponent (Workspace.jsx:33, SidePanel.jsx:116, Notes POST at SidePanel.jsx:96). Node URL resolution in the sandbox turned job='../../../api/settings?x=' into GET /api/settings?x= for both panel loads and into POST /api/settings?x= for the Notes action. The impact is bounded. The GETs give nothing beyond what a top-level Lax navigation already gives. The only reachable unsafe request needs the victim to type a note and click Add note, and it carries the fixed body {note:<victim text>}. It can reach only paths that also answer GET with JSON: /api/settings, /api/profile, /api/search-prefs, /api/answer-bank, /api/offers, /api/resumes, /api/automation/rules and /api/settings/runner-tokens. Those handlers either reject unknown fields, require other fields (runner token creation requires a label, db/runner_db.py:194-196), or at most store an inert 'note' settings key. All other panel actions use the server-returned app.job_id, not the raw query value. No security impact across a boundary, so this is recorded as hardening.",
+    "artifact": "agents/h07-injection/artifacts/work/evidence/frontend-safehref-cspt.json"
+   },
+   {
+    "agent_id": "h07-injection",
+    "reviewed_paths": [
+     "server/app.py",
+     "core/auth.py",
+     "frontend/next.config.mjs",
+     "templates/setup.html"
+    ],
+    "invariant": "Framed state-changing actions must not complete for a cross-site framer, and server-side HTML templates must not render untrusted values unescaped.",
+    "method": "source",
+    "result": "server/app.py sets no X-Frame-Options or CSP frame-ancestors. However, the session cookie is SameSite=Lax (core/auth.py:143-147), so a cross-site iframe loads with no session and the framed app sits at login. A complete clickjack therefore needs a same-site framer, which source does not ground, so this is hardening only. templates/setup.html:243 builds innerHTML from interpolated values. It is unserved: no route renders it, and tests/test_old_frontend_removed.py:119 says so. No Jinja or template engine is used anywhere.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "x_hardening": [
+   "frontend/src/components/applications/Workspace.jsx:33 and SidePanel.jsx:96/116: the ?job= query value goes unencoded into fetch paths, which is a client-side path traversal primitive (../../../api/settings?x= resolves to /api/settings). The only reachable unsafe request today is a victim-clicked Notes POST with the fixed body {note}, which has no security effect. Wrap jobId in encodeURIComponent, or validate ^[0-9a-f]{16}$ before setOpenId, so a future GET+POST endpoint cannot be reached this way.",
+   "server/app.py sets no X-Frame-Options / CSP frame-ancestors. Clickjacking is currently blocked for cross-site framers by the SameSite=Lax session cookie (core/auth.py:145), but a same-site origin (e.g. another port on the same host) could frame the Approve/Submit UI. Add 'Content-Security-Policy: frame-ancestors none' (and X-Frame-Options: DENY) in a response middleware.",
+   "templates/setup.html:243 builds row.innerHTML from interpolated values with no escaping. It is not served today; delete the file so it cannot be re-mounted.",
+   "safeHref (frontend/src/lib/live.js:65) correctly limits job links to http(s), but any http(s) destination is allowed. That is acceptable because every anchor uses rel=noopener noreferrer."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "intelligence%2Fscorer.py%23score_job%2Cscore_jobs_batch::applier%2Fautonomy.py%23rule_failures%20min_score%3Bapplier%2Fqueue_worker.py%23quality_gate::intelligence%2Fscorer.py%2Bintelligence%2Fbriefer.py::AI-AND-LLM.md%23Indirect%20injection%20through%20retrieved%20or%20ingested%20content",
+  "canonical_refs": {
+   "surface": "intelligence/scorer.py#score_job,score_jobs_batch",
+   "boundary": "applier/autonomy.py#rule_failures min_score;applier/queue_worker.py#quality_gate",
+   "subsystem": "intelligence/scorer.py+intelligence/briefer.py",
+   "attack_class": "AI-AND-LLM.md#Indirect injection through retrieved or ingested content"
+  },
+  "surface": "LLM job scoring of scraped descriptions gating autonomy and the quality gate",
+  "boundary": "LLM-to-action boundary: ai_score trusted by autonomy min_score and the queue quality gate",
+  "subsystem": "intelligence",
+  "attack_class": "Indirect injection through retrieved or ingested content",
+  "starting_paths": [
+   "intelligence/scorer.py",
+   "intelligence/briefer.py",
+   "tracking/pipeline.py",
+   "applier/autonomy.py",
+   "applier/queue_worker.py",
+   "db/jobs_db.py",
+   "db/autonomy_db.py"
+  ],
+  "ordinary_attack_class_block": null,
+  "selected_companion_blocks": [
+   "AI-AND-LLM.md#Core discipline",
+   "AI-AND-LLM.md#Indirect injection through retrieved or ingested content",
+   "AI-AND-LLM.md#Excessive agency and confused-deputy authority",
+   "AI-AND-LLM.md#Universal moves",
+   "AI-AND-LLM.md#Validation rules",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Retry storm and fail-open amplification",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 2,
+  "status": "candidate",
+  "agent_id": "h11-scoring",
+  "reviewed_paths": [
+   "applier/autonomy.py",
+   "applier/queue_worker.py",
+   "applier/session.py",
+   "core/llm.py",
+   "db/autonomy_db.py",
+   "db/jobs_db.py",
+   "intelligence/briefer.py",
+   "intelligence/scorer.py",
+   "server/routes/jobs.py",
+   "server/routes/queue.py",
+   "tracking/pipeline.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h11-scoring",
+    "reviewed_paths": [
+     "intelligence/scorer.py",
+     "core/llm.py",
+     "db/jobs_db.py",
+     "applier/autonomy.py",
+     "applier/queue_worker.py",
+     "db/autonomy_db.py",
+     "applier/session.py"
+    ],
+    "invariant": "A job whose LLM scoring failed must stay unscored (ai_score NULL), so the queue quality gate and an autonomy min_score rule both fail closed ('an unscored job fails', applier/autonomy.py:13)",
+    "method": "local",
+    "result": "I mocked LLM.chat_json five ways: provider RuntimeError, invalid-JSON ValueError, {\"score\": NaN}, a missing score key, and a non-dict reply. In every case score_jobs_batch stored ai_score=50 through JobsDB.update_score. quality_gate returned None and queue_jobs queued the job. consider_auto_approval returned a rule with min_score 50 (kill switch on, 1 reviewed and approved attempt, require_all_answers_known false). The control job with ai_score NULL was correctly refused (None).",
+    "artifact": "agents/h11-scoring/artifacts/work/evidence/scorer_failopen.json"
+   },
+   {
+    "agent_id": "h11-scoring",
+    "reviewed_paths": [
+     "intelligence/scorer.py",
+     "tracking/pipeline.py",
+     "server/routes/jobs.py",
+     "server/routes/queue.py",
+     "applier/autonomy.py",
+     "applier/queue_worker.py",
+     "db/jobs_db.py"
+    ],
+    "invariant": "Scraped job description text, injected into the scoring prompt, cannot by itself cause a submission the owner did not approve",
+    "method": "source",
+    "result": "The scraped description goes verbatim (up to 1500 chars) into the scoring prompt (scorer.py:136-150). The returned score is clamped to 0-100 and stored. It is the only input to min_score and quality_gate, and there is no deterministic cross-check. Still, scoring and queueing are both owner-only (jobs.py run_pipeline and queue.py queue use require_owner). Every job reaches the queue only through an owner queue_jobs call. Autonomy also needs the owner-enabled kill switch, a rule the owner wrote, human-reviewed ledger stats (min_attempts >=1, success rate), answers_known (on by default), max_per_day and the daily limit. An inflated score therefore only satisfies a model-judgment condition the owner chose to delegate. No principal boundary is crossed and no sink is reached that the owner did not configure, so this is not a finding (see hardening).",
+    "artifact": null
+   },
+   {
+    "agent_id": "h11-scoring",
+    "reviewed_paths": [
+     "intelligence/scorer.py",
+     "core/llm.py",
+     "tracking/pipeline.py"
+    ],
+    "invariant": "Scoring failures and retries are bounded and do not amplify spend or work past what the owner started",
+    "method": "source",
+    "result": "chat_json makes at most 2 provider calls per job: one JSON-repair retry and no retry on a call error (core/llm.py:92-110). The batch uses 5 workers and only scores newly inserted jobs from an owner-started pipeline run (require_owner). Cancellation drops queued futures. Nothing re-queues failed scorings, so there is no retry storm and no cross-principal spend.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h11-scoring",
+    "reviewed_paths": [
+     "intelligence/briefer.py",
+     "db/jobs_db.py",
+     "tracking/pipeline.py"
+    ],
+    "invariant": "Briefer output derived from attacker-authored descriptions is stored only for the owning job and does not authorize actions in this unit",
+    "method": "source",
+    "result": "generate_and_save writes brief, tailored_summary and tailored_skills to job_briefs only after the _owns check (jobs_db.py:534-549). None of these feed min_score or quality_gate. Their later use in ghostwriter and kit.py belongs to peer-owned units.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h11-scoring",
+    "reviewed_paths": [
+     "applier/autonomy.py",
+     "applier/queue_worker.py",
+     "db/autonomy_db.py",
+     "db/jobs_db.py"
+    ],
+    "invariant": "The min_score and quality gates read the current stored score at decision time and reject NULL",
+    "method": "source",
+    "result": "consider_auto_approval re-reads the job row (autonomy.py:208-210), and rule_failures rejects None (autonomy.py:81). quality_gate rejects None and anything below the threshold (queue_worker.py:109-114), both at queue time (queue_worker.py:167) and at pick time (queue_worker.py:321). min_score is validated as an int from 0 to 100 (autonomy_db.py:142-143). ai_score is only ever written by the scorer (jobs_db.py update_score). There is no stale or type-confusion bypass beyond the fail-open fallback.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "intelligence/scorer.py:score_job:llm-failure-fallback-score-50-passes-autonomy-min-score"
+  ],
+  "unresolved": [],
+  "x_critic_reason": "critic-w1 missing unit",
+  "x_hardening": [
+   "ai_score comes entirely from an LLM reading attacker-authored job descriptions (intelligence/scorer.py:136-150) with no deterministic cross-check, yet autonomy uses it as an approval condition. Consider labelling min_score as advisory in the UI, or requiring require_all_answers_known (already the default) and an explicit per-site rule so an inflated score alone never widens auto-submission.",
+   "score_job treats a string auto_skip such as \"false\" as truthy (scorer.py:158). This fails closed (the job is skipped), but bool parsing should be strict.",
+   "tracking/pipeline.py dedups with an unscoped JobsDB (exists_bulk and add check url_hash across all users). Today only the owner pipeline adds jobs, but a future per-user job import would let one tenant suppress the owner's scraped jobs."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "main.py%23_start_next_dev%3Bfrontend%2Fnext.config.mjs%23rewrites::core%2Fconfig.py%23APP_HOST%3Bcore%2Fthrottle.py%23LoginThrottle::main.py%2Bfrontend%2Fnext.config.mjs::WEB-PROTOCOL-AND-AUTH.md%23Host%20and%20forwarded-header%20trust",
+  "canonical_refs": {
+   "surface": "main.py#_start_next_dev;frontend/next.config.mjs#rewrites",
+   "boundary": "core/config.py#APP_HOST;core/throttle.py#LoginThrottle",
+   "subsystem": "main.py+frontend/next.config.mjs",
+   "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust"
+  },
+  "surface": "--dev-ui mode: Next dev server proxying /api to the backend",
+  "boundary": "Network exposure and client-identity boundary",
+  "subsystem": "main/frontend dev proxy",
+  "attack_class": "Host and forwarded-header trust",
+  "starting_paths": [
+   "main.py",
+   "frontend/next.config.mjs",
+   "frontend/package.json",
+   "server/app.py",
+   "core/throttle.py",
+   "server/routes/auth.py",
+   "core/config.py",
+   "core/auth.py"
+  ],
+  "ordinary_attack_class_block": null,
+  "selected_companion_blocks": [
+   "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+   "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust",
+   "WEB-PROTOCOL-AND-AUTH.md#Cookie scope and transport",
+   "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+   "WEB-PROTOCOL-AND-AUTH.md#Validation rules",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Quota-accounting scope and reset gaps",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 2,
+  "status": "candidate",
+  "agent_id": "h12-devui",
+  "reviewed_paths": [
+   "core/auth.py",
+   "core/config.py",
+   "core/throttle.py",
+   "frontend/next.config.mjs",
+   "main.py",
+   "server/app.py",
+   "server/routes/auth.py",
+   "server/static_shell.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h12-devui",
+    "reviewed_paths": [
+     "core/throttle.py",
+     "server/routes/auth.py"
+    ],
+    "invariant": "Login brute-force/password-spray throttle must bucket by the true client identity, not by an attacker-controllable value.",
+    "method": "local",
+    "result": "server/routes/auth.py:58 _client_ip returns request.client.host (Starlette scope['client']); throttle keys are acct:{ip}|{email} (5/15min) and ip:{ip} (20/15min) at core/throttle.py:45. The isolated fixture fed uvicorn's default-config ProxyHeadersMiddleware (0.54.0, proxy_headers=True, forwarded_allow_ips='127.0.0.1,::1' — the same defaults main.py's uvicorn.Config leaves untouched): a loopback peer supplying X-Forwarded-For:203.0.113.9 produced scope['client']='203.0.113.9', a rotated value produced '198.51.100.7', no XFF produced '127.0.0.1', and a non-loopback peer's XFF was correctly ignored ('10.0.0.5'). Thus a client that can set X-Forwarded-For through the loopback dev proxy fully controls the throttle key and rotates it per request, so neither limit ever trips.",
+    "artifact": "agents/h12-devui/artifacts/work/evidence/xff_trust.json"
+   },
+   {
+    "agent_id": "h12-devui",
+    "reviewed_paths": [
+     "main.py",
+     "core/config.py",
+     "frontend/next.config.mjs"
+    ],
+    "invariant": "The dev-UI proxy hop must not let an external client's forwarded-for reach a backend that trusts it.",
+    "method": "source",
+    "result": "frontend/next.config.mjs:30-31 rewrites /api/:path* to http://127.0.0.1:8000. In the shipped Next 16 dependency, that rewrite is handled by router-server.js proxyRequest -> next/dist/compiled/httpxy ProxyServer; setupOutgoing does e.headers={...r.headers} (copies every client header) and only overrides host/x-forwarded-host, never x-forwarded-for, and this proxy path bypasses base-server's `req.headers['x-forwarded-for'] ??= socket.remoteAddress` defaulting. So a client-sent X-Forwarded-For is relayed verbatim from the loopback proxy to the backend. main.py start_server builds uvicorn.Config(app, host=cfg.APP_HOST, port=cfg.APP_PORT, log_level='warning') and core/shutdown.make_server wraps it without altering proxy_headers; core/config.py APP_HOST defaults to 127.0.0.1, so in --dev-ui the backend's peer is always the trusted loopback proxy. core/throttle.py's own header comment assumes proxy headers are off unless uvicorn is started with --proxy-headers, but the library default is on.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h12-devui",
+    "reviewed_paths": [
+     "server/app.py",
+     "core/auth.py",
+     "server/static_shell.py"
+    ],
+    "invariant": "Attacker-controlled Host/X-Forwarded-Host reaching the backend must not drive absolute URLs, redirects, reset links, or cache keys; the session cookie must not gain scope from them.",
+    "method": "source",
+    "result": "The auth gate (server/app.py _install_auth_gate) and public-path logic (server/static_shell.py) read only request.url.path; the sole other request-URL read in the API is request.url.query (onboarding.py). No route builds absolute URLs, redirects, password-reset links, or cache keys from Host/X-Forwarded-Host, and set_session_cookie (core/auth.py:144) sets no Domain. So the Host/X-Forwarded-Host that the dev proxy also forwards has no confirmed security impact — the exploitable forwarded header is X-Forwarded-For via the throttle, not Host. Recorded as hardening.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "core/throttle.py:LoginThrottle:dev-ui-proxy-forwards-client-xff-defeats-login-ratelimit"
+  ],
+  "unresolved": [],
+  "x_critic_reason": "critic-w1 missing unit",
+  "x_hardening": [
+   "Host / X-Forwarded-Host supplied by the client is also relayed to the backend in --dev-ui mode, but no backend route derives absolute URLs, redirects, password-reset links, or cache keys from it (only request.url.path and request.url.query are read) and set_session_cookie sets no cookie Domain, so the host-header trust itself has no confirmed security impact; only the X-Forwarded-For -> throttle path is exploitable.",
+   "LoginThrottle is in-memory and per-process (core/throttle.py): it resets on restart and is not shared across uvicorn workers, so with multiple workers each bucket's effective limit multiplies by the worker count — acknowledged in source as acceptable for the single-process default, but worth a Redis-backed store before scaling out.",
+   "LoginThrottle._MAX_TRACKED_KEYS eviction (core/throttle.py:65-73) drops the oldest tracked key when the table is full; a client churning many distinct X-Forwarded-For values can evict a legitimate victim's accumulated failure counters, which only further loosens the limits — bounded memory, no DoS, but reinforces that the per-IP dimension is not a reliable control once XFF is spoofable."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "repo%23all::repo%23all::repo::ATTACK-CLASSES.md%23Obvious%20things",
+  "canonical_refs": {
+   "surface": "repo#all",
+   "boundary": "repo#all",
+   "subsystem": "repo",
+   "attack_class": "ATTACK-CLASSES.md#Obvious things"
+  },
+  "surface": "Repository-wide basic exposures",
+  "boundary": "Basic exposure checklist",
+  "subsystem": "repo",
+  "attack_class": "Obvious things",
+  "starting_paths": [
+   "main.py",
+   "applier",
+   "core",
+   "db",
+   "intelligence",
+   "runner",
+   "scraper",
+   "server",
+   "tracking",
+   "frontend",
+   "tests",
+   "requirements.txt",
+   ".env.example",
+   ".gitignore",
+   "templates",
+   "static"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Obvious things",
+  "selected_companion_blocks": [],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "covered",
+  "agent_id": "h09-obvious-wild",
+  "reviewed_paths": [
+   ".env.example",
+   ".gitignore",
+   "MULTI_USER_STATUS.md",
+   "applier/adapters/__init__.py",
+   "core/auth.py",
+   "core/config.py",
+   "core/throttle.py",
+   "db/users_db.py",
+   "frontend/next.config.mjs",
+   "frontend/package-lock.json",
+   "frontend/package.json",
+   "frontend/src/app/layout.jsx",
+   "frontend/src/lib/api.js",
+   "main.py",
+   "requirements.txt",
+   "runner/runner.py",
+   "server/app.py",
+   "server/routes/apply.py",
+   "server/routes/auth.py",
+   "server/routes/onboarding.py",
+   "server/routes/settings.py",
+   "server/static_shell.py",
+   "tracking/pipeline.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h09-obvious-wild",
+    "reviewed_paths": [
+     ".env.example",
+     "core/config.py",
+     "core/auth.py",
+     "db/users_db.py",
+     "MULTI_USER_STATUS.md"
+    ],
+    "invariant": "No hardcoded or shipped secret/credential works in production (grep password/secret/apikey/token/Bearer/-----BEGIN/sk-/AKIA/ghp_; placeholder signing key refused)",
+    "method": "source",
+    "result": "No real secrets anywhere in the source. .env.example holds only 'your_*_here' placeholders, and settings_db rejects placeholder values. The APP_SECRET_KEY default 'change_me' (core/config.py) is refused by core/auth.py _is_usable_secret, which also refuses empty, 'change_this_to_random_string' and anything under 32 characters. A random secret is then generated into data/.session_secret (0600). There are no seed users or default passwords: the only sk-... strings are fake values in test fixtures.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h09-obvious-wild",
+    "reviewed_paths": [
+     ".gitignore",
+     ".env.example"
+    ],
+    "invariant": "No secret files are checked in, and .gitignore covers secrets, uploads and local config",
+    "method": "source",
+    "result": "No .env, *.pem, *.key, credentials*.json, *.db, .session_secret or .master.key files are in the tree; only .env.example. There is no .git directory, so there is no history to check. .gitignore covers .env, *.env.local, data/ (DBs, cookies, sessions, screenshots, .master.key, .session_secret, resumes), *.pdf, logs/ and the frontend build output. Gaps (hardening only): .env.production-style names and loose *.pem/*.key outside data/.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h09-obvious-wild",
+    "reviewed_paths": [
+     "requirements.txt",
+     "frontend/package.json",
+     "frontend/package-lock.json"
+    ],
+    "invariant": "Dependencies are pinned or locked",
+    "method": "source",
+    "result": "The frontend is locked: package-lock.json pins next 16.3.7, react and react-dom 19.2.4 exactly, and package.json uses ^16.3.5 for next. The Python requirements.txt uses only >= floors and there is no lockfile or hash pinning, so a fresh install gets whatever version is newest. A CVE lookup was not possible offline. Recorded as hardening.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h09-obvious-wild",
+    "reviewed_paths": [
+     "main.py",
+     "applier/adapters/__init__.py",
+     "tracking/pipeline.py",
+     "frontend/src/app/layout.jsx"
+    ],
+    "invariant": "No eval/exec/subprocess/dynamic import is reached by untrusted input",
+    "method": "source",
+    "result": "No eval, exec, pickle, yaml.load or shell=True anywhere. subprocess appears only in main.py, which runs a fixed [npm, 'run', 'dev'] for --dev-ui. importlib takes only constant module names: applier/adapters REGISTRY tuple, and tracking/pipeline SCRAPERS[platform] behind a membership check. The frontend has no eval, new Function or dynamic import. Its only dangerouslySetInnerHTML is the constant INIT_SCRIPT theme script.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h09-obvious-wild",
+    "reviewed_paths": [
+     "server/app.py",
+     "server/static_shell.py",
+     "server/routes/onboarding.py",
+     "server/routes/auth.py",
+     "core/auth.py"
+    ],
+    "invariant": "Debug, docs, status, health, metrics, .env and config endpoints are not exposed anonymously; no debug mode can be switched on; cookies carry HttpOnly, Secure and SameSite",
+    "method": "local",
+    "result": "Ran in the sandbox with a TestClient on https://testserver. As an anonymous visitor: /docs, /redoc, /openapi.json, /screenshots/, /health, /metrics, /.env, /config and /debug all return 303 to /. /api/status and /api/settings return 401. The only debug-like switch is the APEX_DEV_UI_ORIGIN env var, which main.py sets itself; no query parameter or header enables a debug mode, and FastAPI debug stays False. The first signup returns id 1, and its cookie is set as 'HttpOnly; Max-Age=1209600; Path=/; SameSite=lax; Secure'. A second signup with ALLOW_SIGNUP unset gets 403. A signed-in user can reach /docs and /openapi.json (200), which lists the routes but no data.",
+    "artifact": "agents/h09-obvious-wild/artifacts/work/evidence/obvious_http.json"
+   },
+   {
+    "agent_id": "h09-obvious-wild",
+    "reviewed_paths": [
+     "server/app.py",
+     "frontend/next.config.mjs"
+    ],
+    "invariant": "No permissive CORS and no credentialed wildcard origin",
+    "method": "source",
+    "result": "No CORSMiddleware or Access-Control-* headers are set anywhere, by design (server/app.py docstring). The dev server is same-origin through the Next rewrite of /api/*.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h09-obvious-wild",
+    "reviewed_paths": [
+     "server/routes/onboarding.py",
+     "server/routes/auth.py",
+     "server/app.py",
+     "frontend/src/lib/api.js",
+     "server/static_shell.py"
+    ],
+    "invariant": "No open redirect from redirect/next/return/url-style parameters",
+    "method": "source",
+    "result": "Every RedirectResponse has a fixed target: /login goes to /; the auth gate sends to /; LEGACY_REDIRECTS map to constant paths and only the query string is appended; the dev UI redirect goes to the constant APEX_DEV_UI_ORIGIN plus a constant SHELL_ROUTES path. The frontend's only location assignment is window.location.href='/' on a 401. No user-controlled redirect target exists.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h09-obvious-wild",
+    "reviewed_paths": [
+     "core/config.py",
+     "runner/runner.py",
+     ".env.example"
+    ],
+    "invariant": "TLS is enforced where secrets travel",
+    "method": "source",
+    "result": "The app binds to 127.0.0.1 by default and relies on an external TLS proxy, which is not visible in source. COOKIE_SECURE defaults to true. runner.py accepts an http:// server URL and only warns when it is not localhost (runner/runner.py:842), so the bearer token can travel in cleartext if the operator picks http. That is a documented operator choice, recorded as hardening.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h09-obvious-wild",
+    "reviewed_paths": [
+     "server/routes/onboarding.py",
+     "server/routes/settings.py",
+     "server/routes/apply.py"
+    ],
+    "invariant": "Error responses do not return stack traces, internal paths or SQL errors",
+    "method": "local",
+    "result": "There are no custom exception handlers and FastAPI debug is off, so an unhandled error returns a plain 500 with no traceback. Malformed JSON returns the standard 422 with the JSON decode message. Some handlers pass str(e) into the response: 400/409 from validation errors; upload-resume's parse_failed error; check_cookies' message, which is only reachable by an authed user. None of these return SQL text or a traceback in the run.",
+    "artifact": "agents/h09-obvious-wild/artifacts/work/evidence/obvious_http.json"
+   },
+   {
+    "agent_id": "h09-obvious-wild",
+    "reviewed_paths": [
+     "core/auth.py",
+     "server/routes/auth.py",
+     "db/users_db.py",
+     "core/throttle.py"
+    ],
+    "invariant": "No TODO/FIXME/HACK comments mark missing security controls; auth helpers have no test-only bypass",
+    "method": "source",
+    "result": "grep for TODO|FIXME|HACK|XXX finds only test data strings such as 'hacked' and a placeholder regex in settings_db; none mark a missing security control. The transitional require_owner guard is documented and applied. No auth bypass is controlled by an env var.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "x_hardening": [
+   "requirements.txt pins only >= floors and has no lockfile or hashes. Pin exact versions with hashes, e.g. pip-compile --generate-hashes, so a fresh install cannot pull a newer, untested or compromised release.",
+   "No security response headers are set: no CSP, no X-Frame-Options or frame-ancestors, no X-Content-Type-Options. SameSite=Lax keeps the session cookie out of cross-site frames, but same-site subdomains could still frame the UI. Add frame-ancestors 'none' and a basic CSP.",
+   "On a fresh install, whoever submits the first POST /api/auth/signup becomes owner (id 1) with no setup token. That is safe on the default 127.0.0.1 bind, but if the app is exposed before the operator signs up, a network attacker can claim the owner account. Consider a one-time bootstrap token printed to the console.",
+   "Any signed-in user, non-owners included, can read /docs and /openapi.json, which list the full API. Disable docs_url/openapi_url in production, or gate them behind require_owner.",
+   "runner/runner.py takes the bearer token as a --token command-line argument, so other local users can see it in the process list, and it accepts http:// servers with only a warning. Read the token from an env var, a file or stdin, and refuse non-loopback http.",
+   "The .gitignore covers .env and *.env.local but not other .env.* names (e.g. .env.production), nor loose *.pem or *.key outside data/.",
+   "clear_session_cookie calls delete_cookie without the matching Secure/SameSite attributes. Harmless today, since the name and path match, but keep the attributes consistent.",
+   "On Windows, ApplicationSession.load(job_id) builds SESSIONS_DIR / f'{job_id}.json' straight from the path parameter, so a backslash in the id could point outside the sessions directory. Today it reads only session-shaped JSON and gives the same 404 for every failure, but validating job_id against ^[0-9a-f]{16}$ before using it in a path would remove the risk."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "repo%23all::repo%23all::repo::ATTACK-CLASSES.md%23Wildcard",
+  "canonical_refs": {
+   "surface": "repo#all",
+   "boundary": "repo#all",
+   "subsystem": "repo",
+   "attack_class": "ATTACK-CLASSES.md#Wildcard"
+  },
+  "surface": "Repository-wide wildcard",
+  "boundary": "Any boundary not covered elsewhere",
+  "subsystem": "repo",
+  "attack_class": "Wildcard",
+  "starting_paths": [
+   "main.py",
+   "applier",
+   "core",
+   "db",
+   "intelligence",
+   "runner",
+   "scraper",
+   "server",
+   "tracking",
+   "frontend",
+   "tests",
+   "requirements.txt",
+   ".env.example",
+   ".gitignore",
+   "templates",
+   "static"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Wildcard",
+  "selected_companion_blocks": [],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "h09-obvious-wild",
+  "reviewed_paths": [
+   "applier/pack.py",
+   "applier/session.py",
+   "core/auth.py",
+   "db/jobs_db.py",
+   "db/users_db.py",
+   "intelligence/prep.py",
+   "server/app.py",
+   "server/routes/applications.py",
+   "server/routes/apply.py",
+   "server/routes/assist.py",
+   "server/routes/auth.py",
+   "server/routes/follow_ups.py",
+   "server/routes/kits.py",
+   "server/routes/prep.py",
+   "server/sse.py",
+   "server/websocket.py",
+   "templates/setup.html",
+   "tests/test_applications_http.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h09-obvious-wild",
+    "reviewed_paths": [
+     "server/sse.py",
+     "server/routes/applications.py",
+     "server/websocket.py",
+     "server/app.py",
+     "core/auth.py",
+     "server/routes/auth.py",
+     "db/users_db.py",
+     "db/jobs_db.py",
+     "tests/test_applications_http.py"
+    ],
+    "invariant": "Revoking a session (logout-everywhere, password change, deactivation) ends that session's access now, including connections that were already open (promised in the server/app.py auth gate comment)",
+    "method": "local",
+    "result": "Ran uvicorn on isolated loopback in the sandbox with dummy user 1. A copy of user 1's cookie opened GET /api/events/stream. User 1 then called POST /api/auth/logout-everywhere (200). After that, the same cookie got 401 on /api/stats and 401 when opening a new stream. But the stream already open delivered an application_event created after the revocation (id 2, step 'opened_page', message 'post-revocation secret step for DummyCo'). sse.stream loops forever and never re-checks the session. /ws/{job_id} (server/websocket.py:67-89) has the same connect-time-only check by source.",
+    "artifact": "agents/h09-obvious-wild/artifacts/work/evidence/sse_after_revocation.json"
+   },
+   {
+    "agent_id": "h09-obvious-wild",
+    "reviewed_paths": [
+     "server/routes/assist.py",
+     "applier/pack.py",
+     "server/routes/kits.py",
+     "server/routes/prep.py",
+     "intelligence/prep.py",
+     "server/routes/follow_ups.py"
+    ],
+    "invariant": "Routes a non-owner can reach that are not on the recon list do not spend the owner's LLM key or return the owner's profile",
+    "method": "source",
+    "result": "Pack, kits, prep and follow-ups consistently gate LLM generation and owner-profile use on PROFILE_OWNER_ID/require_owner (owner_profile(), prep.start/on_stage_change, follow_ups draft_missing only for OWNER_USER_ID, regenerate routes use require_owner). No new gap found.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h09-obvious-wild",
+    "reviewed_paths": [
+     "server/routes/apply.py",
+     "applier/session.py",
+     "templates/setup.html"
+    ],
+    "invariant": "Odd or legacy code paths (the session JSON keyed by job_id, the unserved legacy template) cannot be used to reach files or data",
+    "method": "local",
+    "result": "The session file path is SESSIONS_DIR / f'{job_id}.json'. The path parameter cannot hold '/', and a request with an encoded backslash id returned 404 in the sandbox. On Windows a backslash id could point at another *.json file, but it only loads if it parses as the ApplicationSession dataclass, and every failure returns the same 404. The status route itself belongs to a peer. templates/setup.html is not served by any route.",
+    "artifact": "agents/h09-obvious-wild/artifacts/work/evidence/obvious_http.json"
+   }
+  ],
+  "result_fingerprints": [
+   "server/sse.py:stream:no-session-revalidation"
+  ],
+  "unresolved": [],
+  "x_hardening": [
+   "requirements.txt pins only >= floors and has no lockfile or hashes. Pin exact versions with hashes, e.g. pip-compile --generate-hashes, so a fresh install cannot pull a newer, untested or compromised release.",
+   "No security response headers are set: no CSP, no X-Frame-Options or frame-ancestors, no X-Content-Type-Options. SameSite=Lax keeps the session cookie out of cross-site frames, but same-site subdomains could still frame the UI. Add frame-ancestors 'none' and a basic CSP.",
+   "On a fresh install, whoever submits the first POST /api/auth/signup becomes owner (id 1) with no setup token. That is safe on the default 127.0.0.1 bind, but if the app is exposed before the operator signs up, a network attacker can claim the owner account. Consider a one-time bootstrap token printed to the console.",
+   "Any signed-in user, non-owners included, can read /docs and /openapi.json, which list the full API. Disable docs_url/openapi_url in production, or gate them behind require_owner.",
+   "runner/runner.py takes the bearer token as a --token command-line argument, so other local users can see it in the process list, and it accepts http:// servers with only a warning. Read the token from an env var, a file or stdin, and refuse non-loopback http.",
+   "The .gitignore covers .env and *.env.local but not other .env.* names (e.g. .env.production), nor loose *.pem or *.key outside data/.",
+   "clear_session_cookie calls delete_cookie without the matching Secure/SameSite attributes. Harmless today, since the name and path match, but keep the attributes consistent.",
+   "On Windows, ApplicationSession.load(job_id) builds SESSIONS_DIR / f'{job_id}.json' straight from the path parameter, so a backslash in the id could point outside the sessions directory. Today it reads only session-shaped JSON and gives the same 404 for every failure, but validating job_id against ^[0-9a-f]{16}$ before using it in a path would remove the risk."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "runner%2Frunner.py%23HttpBackend%2Brun_task::runner%2Frunner.py%23HttpBackend::runner%2Frunner.py::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+  "canonical_refs": {
+   "surface": "runner/runner.py#HttpBackend+run_task",
+   "boundary": "runner/runner.py#HttpBackend",
+   "subsystem": "runner/runner.py",
+   "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+  },
+  "surface": "Runner client handling of server-supplied tasks",
+  "boundary": "Runner machine trusts only its own server",
+  "subsystem": "runner client",
+  "attack_class": "Resource and file handling (runner)",
+  "starting_paths": [
+   "runner/runner.py",
+   "applier/runner_hub.py"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+  "selected_companion_blocks": [
+   "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+   "PROTOCOLS-RPC-AND-MESSAGING.md#Untrusted producer treated as control plane",
+   "PROTOCOLS-RPC-AND-MESSAGING.md#Envelope and payload identity mismatch",
+   "PROTOCOLS-RPC-AND-MESSAGING.md#Universal moves",
+   "PROTOCOLS-RPC-AND-MESSAGING.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "covered",
+  "agent_id": "h05-runner",
+  "reviewed_paths": [
+   "applier/screenshotter.py",
+   "applier/universal.py",
+   "runner/runner.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h05-runner",
+    "reviewed_paths": [
+     "runner/runner.py"
+    ],
+    "invariant": "The bearer token goes only to the configured server: no redirect following, no cookies, and netrc cannot replace the header",
+    "method": "source",
+    "result": "HttpBackend accepts only an http(s) scheme and a netloc. _call passes allow_redirects=False. The cookie policy uses allowed_domains=[]. Auth is set through an AuthBase on session.auth, and requests consults netrc only when no auth is set. Server-supplied task_id is placed after the fixed base path, so it cannot change the host.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h05-runner",
+    "reviewed_paths": [
+     "runner/runner.py"
+    ],
+    "invariant": "The server-supplied resume filename cannot write outside a private temp directory or overwrite a file",
+    "method": "source",
+    "result": "_download_resume takes Path(filename).name, maps the name to [A-Za-z0-9._ -], strips leading and trailing dots and spaces, and falls back to resume.pdf. The file is written inside a fresh TemporaryDirectory with O_CREAT|O_EXCL and mode 0600, after the size and sha256 match the payload. The directory is removed when the task ends.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h05-runner",
+    "reviewed_paths": [
+     "runner/runner.py",
+     "applier/universal.py",
+     "applier/screenshotter.py"
+    ],
+    "invariant": "Screenshot upload reads only files the local form code produced, and the remaining payload fields are type-checked before use",
+    "method": "source",
+    "result": "_upload_screenshots reads only the paths in the local pass result, checks each with validate_png, and caps the count at 20. _handle and _run_task type-check task_id, kind, application, params, profile and answers. Two values from the server are trusted without a format check: job_id becomes part of the local screenshot file path (screenshotter.take, SCREENSHOTS_DIR/f'{job_id}_...png'), and application.url is not re-validated as http(s) on the runner. Both are generated or sanitised by the server (sha256-hex job id, pack.safe_url), and that server is the runner's trusted principal, so this is a hardening note, not a finding.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "x_hardening": [
+   "Changing the password or bumping session_version (db/users_db.py change_password) revokes browser sessions but not runner tokens. Consider revoking or flagging runner tokens on password change.",
+   "RunnerTokenStore.revoke does not release tasks claimed by the revoked token. They stay claimed until the 120 s lease lapses, and a submit task then becomes lost_submit (needs_you).",
+   "clean_result always sets the dry_run key, so Orchestrator.finish_pass lets the runner's reported dry_run=false override a submit task created with dry_run=true. The job is then recorded as submitted and counted against the daily limit. The server should not let a result turn a dry-run task into a real submission.",
+   "No owner action (skip or transition) cancels a claimed runner task, and finish_pass does not re-check the job stage before running the finishers. A runner's heartbeats keep getting 200 after the owner skips the application, so the runner never gets the 404/409 'drop it' signal it supports, and its result is still processed.",
+   "Check-then-act on MAX_SCREENSHOTS_PER_TASK and MAX_EVENTS_PER_TASK, and add_screenshot's read-modify-write of the JSON list without BEGIN IMMEDIATE, allow concurrent uploads to exceed the cap and lose list entries, leaving untracked files. Belongs to the peer unit for runner screenshot resource handling.",
+   "The runner client does not check the format of server-supplied job_id and task_id (job_id becomes part of a local screenshot path via applier/screenshotter.py), and it does not re-check that application.url is http(s). Validating hex ids and the scheme client-side would add defence in depth.",
+   "The runner only warns when --server is plain http on a non-loopback host, so the bearer token travels unencrypted."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "server%2Fapp.py%23_install_auth_gate%3Bserver%2Fstatic_shell.py%23is_public_path::server%2Fapp.py%23auth_gate::server%2Fapp.py%2Bserver%2Fstatic_shell.py::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+  "canonical_refs": {
+   "surface": "server/app.py#_install_auth_gate;server/static_shell.py#is_public_path",
+   "boundary": "server/app.py#auth_gate",
+   "subsystem": "server/app.py+server/static_shell.py",
+   "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+  },
+  "surface": "Auth gate, public-path decision and StaticFiles mounts",
+  "boundary": "Session gate",
+  "subsystem": "server",
+  "attack_class": "Resource and file handling",
+  "starting_paths": [
+   "server/app.py",
+   "server/static_shell.py",
+   "server/routes/onboarding.py",
+   "core/auth.py"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+  "selected_companion_blocks": [
+   "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+   "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust",
+   "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+   "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "covered",
+  "agent_id": "h03-files",
+  "reviewed_paths": [
+   "core/auth.py",
+   "core/runner_auth.py",
+   "core/throttle.py",
+   "main.py",
+   "server/app.py",
+   "server/routes/auth.py",
+   "server/routes/onboarding.py",
+   "server/routes/prep.py",
+   "server/static_shell.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h03-files",
+    "reviewed_paths": [
+     "server/static_shell.py",
+     "server/app.py"
+    ],
+    "invariant": "resolve_static_file never marks a path public unless it resolves to a regular file inside the export directory (no escape through ../, symlinks or NUL bytes)",
+    "method": "source",
+    "result": "resolve_static_file resolves each candidate (rel, rel/index.html, rel.html) and requires p.is_relative_to(root) and p.is_file(). ValueError/OSError (for example NUL bytes) returns None. A path outside ui_dir can never make a request public.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h03-files",
+    "reviewed_paths": [
+     "server/static_shell.py",
+     "server/app.py",
+     "server/routes/prep.py",
+     "server/routes/auth.py"
+    ],
+    "invariant": "No differential between the gate's dot-segment-resolving file check / prefix checks and the router's literal path matching lets an API route run without a session",
+    "method": "source",
+    "result": "Path.resolve() in the gate collapses '..' but the Starlette router matches the literal scope path. A bypass would need an API route whose trailing path parameters could hold enough '..' segments to climb to the export root, or a route pattern that matches under /api/auth/ or /static/. No route uses a :path converter. The only route with two parameters (/api/applications/{job_id}/prep/{kind}/regenerate) ends in a fixed segment, so it resolves to api/regenerate, not an export file. No route pattern starts with /api/{ or /api/auth/{. The /static mount is registered first and handles every /static/ path itself with StaticFiles containment. /api/auth/../x matches no route and returns 404. normalize() only strips slashes, and SHELL_ROUTES and LEGACY_REDIRECTS map to UI shells or fixed redirects only.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h03-files",
+    "reviewed_paths": [
+     "server/app.py"
+    ],
+    "invariant": "Mounted StaticFiles directories that hold machine data are not public",
+    "method": "source",
+    "result": "/screenshots is not in PUBLIC_EXACT, PUBLIC_PREFIXES or the export, so it needs a session. Per-user scoping of /screenshots is peer-owned. /static is public, but nothing in the repo writes to <repo>/static (it ships empty). request.url.path and router path agree because root_path is unset (uvicorn.Config in main.py does not set one).",
+    "artifact": null
+   },
+   {
+    "agent_id": "h03-files",
+    "reviewed_paths": [
+     "server/static_shell.py",
+     "core/auth.py",
+     "core/runner_auth.py"
+    ],
+    "invariant": "The runner hole in the gate is an exact match and every other path needs a valid session cookie",
+    "method": "source",
+    "result": "RUNNER_PATH.fullmatch allows only /api/runner/claim and /api/runner/<32 lowercase hex>/(events|screenshot|result|resume). Gate identity comes from get_current_user_id_optional -> user_for_token(cookie). The runner routes check the bearer token with authenticate_header -> runner_db.authenticate. The resource consequence of this hole is reported under the uploads unit.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h03-files",
+    "reviewed_paths": [
+     "main.py",
+     "core/throttle.py",
+     "server/routes/auth.py",
+     "server/routes/onboarding.py"
+    ],
+    "invariant": "Host / X-Forwarded-* metadata does not decide absolute URLs, redirects or authorization",
+    "method": "source",
+    "result": "No code reads the Host header or builds absolute URLs. Legacy redirects use a fixed target plus the query string. The gate redirects to '/'. The dev redirect origin is a constant set in main.py. request.client.host is used only for the login throttle key. uvicorn.Config keeps its defaults (proxy_headers with forwarded_allow_ips 127.0.0.1), so only a loopback proxy is trusted.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "x_hardening": [
+   "In --dev-ui mode, main.py starts `next dev` with no hostname flag. Next's dev server normally listens on all interfaces and proxies /api/* to the backend (frontend/next.config.mjs), which can put the API on the LAN even with APP_HOST=127.0.0.1. Not validated: frontend/node_modules is missing and the Next default is outside the repo. Pass `-H 127.0.0.1` in the dev script.",
+   "There is no app-wide request-body cap: uvicorn sets none, and public /api/auth/* JSON bodies are fully buffered in memory before validation. Add a body-size middleware, or document a required proxy limit that still allows 3 MB screenshots and 5 MB resumes.",
+   "/api/setup/upload-resume truncates resume.pdf in place (open 'wb'). A form fill or runner download reading it at the same time can see a partial file. Use a temp file plus os.replace.",
+   "Neither StaticFiles mount adds X-Content-Type-Options: nosniff. Runner PNGs are checked only up to IHDR, but they are served as image/png, so no exploitable sniffing was found."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "server%2Froutes%2F%2A%23state-changing%20routes%3Bserver%2Fwebsocket.py%23%2Fws%2F%7Bjob_id%7D%3Bserver%2Froutes%2Fapplications.py%23%2Fapi%2Fevents%2Fstream::core%2Fauth.py%23SameSite%3DLax%20cookie::server%2Froutes%2Bserver%2Fwebsocket.py::WEB-PROTOCOL-AND-AUTH.md%23Ordinary%20CSRF",
+  "canonical_refs": {
+   "surface": "server/routes/*#state-changing routes;server/websocket.py#/ws/{job_id};server/routes/applications.py#/api/events/stream",
+   "boundary": "core/auth.py#SameSite=Lax cookie",
+   "subsystem": "server/routes+server/websocket.py",
+   "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Ordinary CSRF"
+  },
+  "surface": "Cookie-authenticated mutations, WebSocket and SSE",
+  "boundary": "Cross-site request binding",
+  "subsystem": "server",
+  "attack_class": "Ordinary CSRF",
+  "starting_paths": [
+   "server/app.py",
+   "core/auth.py",
+   "server/websocket.py",
+   "server/sse.py",
+   "server/routes/applications.py",
+   "server/routes/settings.py"
+  ],
+  "ordinary_attack_class_block": null,
+  "selected_companion_blocks": [
+   "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+   "WEB-PROTOCOL-AND-AUTH.md#Ordinary CSRF",
+   "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+   "WEB-PROTOCOL-AND-AUTH.md#Validation rules",
+   "CLIENT-SIDE.md#Core discipline",
+   "CLIENT-SIDE.md#Cross-site WebSocket request use",
+   "CLIENT-SIDE.md#Credentialed CORS trust",
+   "CLIENT-SIDE.md#Universal moves",
+   "CLIENT-SIDE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "covered",
+  "agent_id": "h04-webauth",
+  "reviewed_paths": [
+   "core/auth.py",
+   "server/app.py",
+   "server/routes/applications.py",
+   "server/routes/settings.py",
+   "server/sse.py",
+   "server/websocket.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h04-webauth",
+    "reviewed_paths": [
+     "server/app.py",
+     "core/auth.py"
+    ],
+    "invariant": "The ambient session credential is bound to same-site contexts so cross-site requests cannot drive authenticated mutations.",
+    "method": "source",
+    "result": "The session cookie is set with samesite='lax', httponly=True, secure=cfg.COOKIE_SECURE (core/auth.py:143-147). The app is strictly same-origin (server/app.py:1-16) with no CORS middleware and no reflected Origin. Because SameSite is explicitly 'lax' (not unspecified), the Chrome Lax+POST 2-minute intervention does not apply, so cross-site POST/PUT/DELETE/PATCH never carry the cookie. The gate (server/app.py:77-95) authenticates via user_for_token for every non-public path. Effective anti-CSRF control present for the browser contexts used.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h04-webauth",
+    "reviewed_paths": [
+     "server/routes/applications.py",
+     "server/routes/settings.py"
+    ],
+    "invariant": "Every cookie-authenticated state change is a non-GET request, and no GET handler mutates state (so Lax-permitted top-level GET navigation cannot be abused).",
+    "method": "source",
+    "result": "A programmatic scan of all server/routes/*.py GET handlers found zero occurrences of write/transition/enqueue/delete/INSERT/UPDATE/DELETE/add/create/revoke bodies. All 69 mutations use @router.post/put/delete/patch. State changers take pydantic JSON bodies (e.g. applications transition/hunt, settings save) or multipart uploads (kits/onboarding upload_resume, runner screenshot). Cross-site HTML-form or fetch submissions of JSON trigger a CORS preflight that has no allow headers; multipart/form submissions are not top-level GET navigations so the Lax cookie is withheld. The runner screenshot upload is bearer-authenticated (non-ambient), outside CSRF scope.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h04-webauth",
+    "reviewed_paths": [
+     "server/websocket.py"
+    ],
+    "invariant": "The WebSocket upgrade authenticates the session and enforces job ownership, and cross-origin hijack of the victim's channel is prevented.",
+    "method": "source",
+    "result": "ws_endpoint (server/websocket.py:57-72) runs its own user_for_token check plus JobsDB(user_id).get_by_id(job_id) ownership check, closing with 1008 (indistinguishable for not-found vs not-owned). The handler is strictly outbound (pushes the owner's apply-progress events; it never reads client frames to mutate state). There is no Origin allowlist check, but the ambient session cookie is SameSite=Lax, which is not attached to cross-site WebSocket handshakes in current browsers, so a cross-origin page cannot open an authenticated socket. Residual is defense-in-depth only (see hardening).",
+    "artifact": null
+   },
+   {
+    "agent_id": "h04-webauth",
+    "reviewed_paths": [
+     "server/sse.py"
+    ],
+    "invariant": "The SSE stream can only ever carry the requesting user's own events regardless of attacker-supplied resume state.",
+    "method": "source",
+    "result": "event_stream (server/routes/applications.py:85) builds JobsDB(user_id=uid) from the session and passes it to sse.stream; every query (event_head, events_since) is scoped to that user, and Last-Event-ID is parsed to a non-negative int and clamped to the user's own head (server/sse.py:33-57). EventSource is a GET subresource, so the Lax cookie is withheld cross-site; there is no mutation path. No cross-origin read or write.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "x_hardening": [
+   "GET /api/settings (server/routes/settings.py:35) returns a dotted prefix plus the last 4 characters of each DECRYPTED secret (API keys, notify_smtp_password, notify_telegram_bot_token). Last-4 masking is industry-standard for high-entropy keys but is still cleartext secret material in a client-visible response; for user-chosen secrets like an SMTP password consider masking with no trailing cleartext.",
+   "POST /api/auth/logout (server/routes/auth.py:82) only clears the cookie and does not bump session_version, so a signed session token obtained out-of-band remains valid for its full 14-day max_age after the user logs out; change-password and logout-everywhere do revoke server-side. HttpOnly+Secure limit token capture, but bumping session_version on logout would give parity and true revocation.",
+   "WebSocket /ws/{job_id} (server/websocket.py:57) authenticates the session and enforces job ownership but performs no Origin allowlist check; cross-origin hijack is currently prevented only by the SameSite=Lax session cookie not being attached to cross-site WS handshakes, and the handler is read-only. An explicit Origin/Host check would add defense in depth independent of browser SameSite behavior.",
+   "The application has no CSRF token and no Origin/Referer validation on any route (server/app.py); CSRF protection relies solely on the explicit SameSite=Lax session cookie (core/auth.py:145). This is effective for the non-GET JSON/multipart mutations actually used, but it is a single layer — an anti-CSRF token or Origin check on state-changing routes would harden against future SameSite regressions or a route added with a Lax-permitted method.",
+   "The session throttle (core/throttle.py) is in-memory and per-process and the login IP is request.client.host; behind a reverse proxy without uvicorn --proxy-headers/--forwarded-allow-ips every client shares one bucket. This is documented in the module and is a deployment-config concern, not a source defect."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "server%2Froutes%2Fapply.py%23GET%20%2Fapi%2Fapply%2Fstatus%2F%7Bjob_id%7D%3Bserver%2Fapp.py%23%2Fscreenshots%20mount::db%2Fjobs_db.py%23JobsDB%28user_id%29::server%2Froutes%2Fapply.py%2Bapplier%2Fsession.py::DATA-ISOLATION-AND-LIFECYCLE.md%23Stale%20authorization%20and%20derived%20copy%20use",
+  "canonical_refs": {
+   "surface": "server/routes/apply.py#GET /api/apply/status/{job_id};server/app.py#/screenshots mount",
+   "boundary": "db/jobs_db.py#JobsDB(user_id)",
+   "subsystem": "server/routes/apply.py+applier/session.py",
+   "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Stale authorization and derived copy use"
+  },
+  "surface": "Apply session status, session JSON and /screenshots mount",
+  "boundary": "Tenant boundary on derived copies",
+  "subsystem": "server/routes+applier",
+  "attack_class": "Missing tenant or owner enforcement (derived copies)",
+  "starting_paths": [
+   "server/routes/apply.py",
+   "applier/session.py",
+   "applier/screenshotter.py",
+   "server/app.py",
+   "applier/runner_hub.py",
+   "server/routes/review.py"
+  ],
+  "ordinary_attack_class_block": null,
+  "selected_companion_blocks": [
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Stale authorization and derived copy use",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Soft-delete and tombstone bypass",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "h01-owner-state",
+  "reviewed_paths": [
+   "applier/runner_hub.py",
+   "applier/screenshotter.py",
+   "applier/session.py",
+   "db/jobs_db.py",
+   "server/app.py",
+   "server/routes/apply.py",
+   "server/routes/jobs.py",
+   "server/routes/review.py",
+   "server/static_shell.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h01-owner-state",
+    "reviewed_paths": [
+     "server/routes/apply.py",
+     "applier/session.py",
+     "db/jobs_db.py"
+    ],
+    "invariant": "GET /api/apply/status/{job_id} returns a session only for a job the caller owns, through JobsDB(user_id=uid)",
+    "method": "local",
+    "result": "status() takes no user dependency and calls ApplicationSession.load(job_id) on the global data/sessions/<job_id>.json. User 2 computed the owner's job id offline as sha256('1:'+normalized public URL)[:16], and it matched. User 2 then got 200 with the owner's session: screenshot paths, application_answers (dummy salary) and the fill log (dummy phone). The sibling routes GET /api/jobs/{id} and /api/applications/{id}/review returned 404 to user 2 for the same id.",
+    "artifact": "agents/h01-owner-state/artifacts/work/evidence/owner_state_nonowner.json"
+   },
+   {
+    "agent_id": "h01-owner-state",
+    "reviewed_paths": [
+     "server/app.py",
+     "server/static_shell.py",
+     "applier/screenshotter.py",
+     "applier/runner_hub.py"
+    ],
+    "invariant": "Filled-form screenshots under /screenshots are served only to the user who owns the job",
+    "method": "local",
+    "result": "/screenshots is a plain StaticFiles mount (app.py:105-107) behind the session gate only. Anonymous requests got 303. User 2 fetched the owner's screenshot (200, dummy PNG bytes) using the name leaked by the status endpoint. Without that leak, server-side names are {job_id}_{label}_{HHMMSS}.png (screenshotter.py:16), which is low entropy. Runner names add 32 random bits (runner_hub.py:446-449).",
+    "artifact": "agents/h01-owner-state/artifacts/work/evidence/owner_state_nonowner.json"
+   },
+   {
+    "agent_id": "h01-owner-state",
+    "reviewed_paths": [
+     "server/routes/jobs.py",
+     "server/routes/review.py"
+    ],
+    "invariant": "Sibling access paths to the same derived copies apply the ownership policy",
+    "method": "source",
+    "result": "/api/stats filters ApplicationSession.load_all() by JobsDB(user_id=uid).job_ids() ('Session files are global; count only the ones for this user's jobs'). The review routes resolve the job and packet through uid. So the intended policy is per-user, and apply.status and the /screenshots mount are the inconsistent paths.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h01-owner-state",
+    "reviewed_paths": [
+     "db/jobs_db.py",
+     "server/routes/jobs.py",
+     "applier/session.py"
+    ],
+    "invariant": "Deleting a job or account removes or invalidates its session JSON and screenshots (stale derived copy)",
+    "method": "source",
+    "result": "DELETE /api/jobs (JobsDB.clear_all) does not remove data/sessions or data/screenshots files, and they stay reachable through the routes above. The source states no deletion guarantee for these copies, so this is recorded as hardening, not a separate finding.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "server/routes/apply.py:apply-status-and-screenshots-missing-job-ownership"
+  ],
+  "unresolved": [],
+  "x_hardening": [
+   "DELETE /api/jobs (JobsDB.clear_all) and account deactivation leave data/sessions/<job_id>.json and data/screenshots/<job_id>_*.png on disk, and they stay reachable. Consider deleting derived copies together with the job.",
+   "Server-side screenshot names in applier/screenshotter.py:16 are {job_id}_{label}_{HHMMSS}.png (low entropy). Use random suffixes as applier/runner_hub.py:446-449 does.",
+   "GET /api/settings/login-status, GET /api/status and GET /api/setup/checklist show non-owners the owner's job-site login state, LLM provider, dry_run and profile completeness. This is low-sensitivity owner state with no owner check.",
+   "GET /api/settings masks secret keys but keeps the last 4 characters (server/routes/settings.py:35). This is owned by the peer crypto/secrets unit and noted here only as a variant."
+  ],
+  "x_uncovered": [
+   {
+    "surface": "GET /api/apply/limits uses unscoped JobsDB() and returns the global applied_today count and the time since the last application to any signed-in user",
+    "boundary": "Tenant boundary (JobsDB(user_id) scoping)",
+    "subsystem": "server/routes",
+    "attack_class": "Missing tenant or owner enforcement",
+    "starting_paths": [
+     "server/routes/apply.py",
+     "db/jobs_db.py"
+    ],
+    "reason": "This route is in apply.py but not in this unit's assigned routes, and no peer coverage ID names it. It is a low-impact cross-tenant aggregate disclosure that needs its own check."
+   }
+  ]
+ },
+ {
+  "coverage_id": "server%2Froutes%2Fapply.py%23POST%20%2Fapi%2Fapply%2Fanswer%3Bapplier%2Fsession.py%23_save_answers::db%2Fprofile_db.py%23CORRECTABLE_FIELDS::applier%2Fsession.py%2Bdb%2Fprofile_db.py%2Bdb%2Fanswer_bank_db.py::AI-AND-LLM.md%23Persistent%20memory%20poisoning",
+  "canonical_refs": {
+   "surface": "server/routes/apply.py#POST /api/apply/answer;applier/session.py#_save_answers",
+   "boundary": "db/profile_db.py#CORRECTABLE_FIELDS",
+   "subsystem": "applier/session.py+db/profile_db.py+db/answer_bank_db.py",
+   "attack_class": "AI-AND-LLM.md#Persistent memory poisoning"
+  },
+  "surface": "Answer-to-profile and answer-bank persistence of page/LLM-chosen field keys and labels",
+  "boundary": "LLM-to-action boundary on stored profile keys and answer-bank questions (CORRECTABLE_FIELDS allow-list)",
+  "subsystem": "applier+db",
+  "attack_class": "Persistent memory poisoning",
+  "starting_paths": [
+   "applier/session.py",
+   "applier/form_analyzer.py",
+   "db/profile_db.py",
+   "applier/answers.py",
+   "applier/review.py",
+   "db/answer_bank_db.py",
+   "server/routes/apply.py",
+   "applier/runner_hub.py",
+   "applier/adapters/standard.py",
+   "server/routes/review.py"
+  ],
+  "ordinary_attack_class_block": null,
+  "selected_companion_blocks": [
+   "AI-AND-LLM.md#Core discipline",
+   "AI-AND-LLM.md#Persistent memory poisoning",
+   "AI-AND-LLM.md#Prompt role and provenance confusion",
+   "AI-AND-LLM.md#Sensitive context extraction",
+   "AI-AND-LLM.md#Universal moves",
+   "AI-AND-LLM.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 2,
+  "status": "candidate",
+  "agent_id": "h10-memory",
+  "reviewed_paths": [
+   "applier/adapters/form.py",
+   "applier/adapters/runner.py",
+   "applier/adapters/standard.py",
+   "applier/answers.py",
+   "applier/form_analyzer.py",
+   "applier/queue_worker.py",
+   "applier/review.py",
+   "applier/runner_hub.py",
+   "applier/session.py",
+   "applier/universal.py",
+   "db/answer_bank_db.py",
+   "db/profile_db.py",
+   "frontend/src/components/applications/ApplyTab.jsx",
+   "server/routes/apply.py",
+   "server/routes/onboarding.py",
+   "server/routes/review.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h10-memory",
+    "reviewed_paths": [
+     "applier/session.py",
+     "db/profile_db.py",
+     "applier/adapters/standard.py",
+     "applier/adapters/form.py",
+     "applier/adapters/runner.py",
+     "frontend/src/components/applications/ApplyTab.jsx"
+    ],
+    "invariant": "An answer to a missing-field prompt may only be stored in the master profile under an allow-listed key that means the same thing as the question shown. CORRECTABLE_FIELDS keeps identity and compliance keys out, and profile_db.py:72-86 says those change only via the Profile page.",
+    "method": "local",
+    "result": "Violated. Orchestrator._save_answers (session.py:298) writes every answered key into the global profile with no allow-list, and resolve_missing (profile_db.py:347) writes the stored page-derived field_key. The key is set by the form: label regex in adapters (standard.key_for) or LLM output (form_analyzer). The UI shows only the label (ApplyTab.jsx:88). Local run: answering a required 'Are you legally authorized to work in the United States?' with No, and 'Will you require visa sponsorship to work in the United Kingdom?' with Yes, flipped the owner's master authorized_to_work Yes->No and require_sponsorship No->Yes (field_history source user_prompt). A later India form was then auto-filled with No/Yes without asking. A simulated LLM key (label 'Referral code', field_key email) overwrote profile.email. The corrections path dropped the same keys.",
+    "artifact": "agents/h10-memory/artifacts/work/evidence/answer_key_profile_poisoning.txt"
+   },
+   {
+    "agent_id": "h10-memory",
+    "reviewed_paths": [
+     "applier/answers.py",
+     "db/answer_bank_db.py",
+     "applier/review.py",
+     "server/routes/review.py"
+    ],
+    "invariant": "Answer-bank writes stay in the answering user's tenant and are keyed by the question the user actually saw, and profile-derived bank entries are read-only.",
+    "method": "source",
+    "result": "Holds. remember_answer and edit_and_remember store under the visible label, scoped to the caller's user_id (every AnswerBank query filters user_id). source=profile is refused on write. Profile-derived entries are only produced for PROFILE_OWNER_ID. A page-chosen label that the user reads and answers with Remember on is intentional user memory, not a cross-boundary write. Profile entries do act as the read path for the poisoned profile keys above (answer_bank_db.py:447 resolve).",
+    "artifact": null
+   },
+   {
+    "agent_id": "h10-memory",
+    "reviewed_paths": [
+     "server/routes/apply.py",
+     "applier/queue_worker.py",
+     "applier/runner_hub.py"
+    ],
+    "invariant": "Only the owner's own job answers reach the global-profile sink, and runner-reported missing fields are bounded.",
+    "method": "source",
+    "result": "POST /api/apply/answer, submit and start use require_owner plus a user-scoped _get_job. QueueWorker runs only the owner's queue. No non-owner path reaches _save_answers. runner_hub.clean_result bounds field_key to 100 characters but does not restrict its value, so it feeds the same sink. The same fix closes it, and the runner token holder acts as the owner.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h10-memory",
+    "reviewed_paths": [
+     "applier/form_analyzer.py",
+     "applier/universal.py"
+    ],
+    "invariant": "An LLM or page-chosen field_key on the universal filler path is validated before it becomes a durable profile key.",
+    "method": "source",
+    "result": "Not validated. form_analyzer.analyze copies fd['field_key'] verbatim from the LLM output (form_analyzer.py:299), and the system prompt lists identity keys as valid targets. universal.run_application returns analysis.missing as missing_fields (universal.py:194,221). That reaches the same unfiltered sink as the deterministic adapter path. Whether a given page steers the model is provider behaviour. The code-level gap does not depend on it.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h10-memory",
+    "reviewed_paths": [
+     "server/routes/onboarding.py"
+    ],
+    "invariant": "Sibling profile writers apply equivalent key and length validation.",
+    "method": "source",
+    "result": "POST /api/profile accepts only STANDARD_FIELDS or existing keys and caps values at 10,000 characters (onboarding.py:95-119). The answer path has neither check: it can create arbitrary custom keys, which then count as known keys for /api/profile, and its value length is unbounded at the profile write.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "applier/session.py:_save_answers:page-derived-field-key-writes-master-profile-bypassing-CORRECTABLE_FIELDS"
+  ],
+  "unresolved": [],
+  "x_critic_reason": "critic-w1 missing unit",
+  "x_hardening": [
+   "_save_answers writes every key in the request's answers object, not only keys of this application's pending prompts. Unlike POST /api/profile it does not check keys against known fields or cap value length, so arbitrary custom profile rows can be created. Owner-only, so this is a same-principal issue, but the recommended prompt_keys filter closes it.",
+   "runner_hub.clean_result limits a runner-reported missing field_key to 100 characters but does not check its value against profile keys. It feeds the same _save_answers/resolve_missing sink and is closed by the same allow-list.",
+   "ProfileDB.missing_fields rows carry no user_id and resolve_missing looks up by row id alone. Today only the owner's session prompts supply ids, but scoping the row to job_id/user would make the binding explicit."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "server%2Froutes%2Fauth.py%23%2Fapi%2Fauth%2F%2A%3Bcore%2Fauth.py%23user_for_token::core%2Fauth.py%23user_for_token::core%2Fauth.py%2Bserver%2Froutes%2Fauth.py::WEB-PROTOCOL-AND-AUTH.md%23Session%20fixation%20and%20invalidation",
+  "canonical_refs": {
+   "surface": "server/routes/auth.py#/api/auth/*;core/auth.py#user_for_token",
+   "boundary": "core/auth.py#user_for_token",
+   "subsystem": "core/auth.py+server/routes/auth.py",
+   "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Session fixation and invalidation"
+  },
+  "surface": "Cookie session lifecycle (login, logout, password change, signup)",
+  "boundary": "Browser authentication",
+  "subsystem": "core/auth",
+  "attack_class": "Session fixation and invalidation",
+  "starting_paths": [
+   "core/auth.py",
+   "server/routes/auth.py",
+   "db/users_db.py",
+   "core/throttle.py",
+   "core/config.py"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Cryptography and secrets",
+  "selected_companion_blocks": [
+   "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+   "WEB-PROTOCOL-AND-AUTH.md#Session fixation and invalidation",
+   "WEB-PROTOCOL-AND-AUTH.md#Cookie scope and transport",
+   "WEB-PROTOCOL-AND-AUTH.md#Password reset and broader recovery",
+   "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+   "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "covered",
+  "agent_id": "h04-webauth",
+  "reviewed_paths": [
+   "core/auth.py",
+   "core/config.py",
+   "core/throttle.py",
+   "db/users_db.py",
+   "server/routes/auth.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h04-webauth",
+    "reviewed_paths": [
+     "core/auth.py",
+     "server/routes/auth.py"
+    ],
+    "invariant": "A session identifier is freshly minted (never reused from a pre-login value) on login/signup, and is rejected after revocation via session_version; no fixation surface.",
+    "method": "source",
+    "result": "create_session_token (core/auth.py:91) always produces a new itsdangerous-signed token bound to {uid,sv}; login (server/routes/auth.py:78) issues it with the DB session_version, signup (line 53) with version 0 matching the new row's default. There is no server-accepted externally-supplied session id, so an attacker cannot pre-seed a cookie (forging requires the signing secret). user_for_token (core/auth.py:118-139) re-checks signature, 14-day age, account active (get_by_id filters is_active=1) and that the token's sv equals the current DB session_version, so change-password (+1) and logout-everywhere (+1) revoke all other sessions. The HTTP gate and the WebSocket both call user_for_token, so they cannot disagree. Confirmed consistent with tests/test_http_auth.py test_change_password_signs_out_other_devices_but_not_this_one and test_deactivated_account_session_dies_immediately.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h04-webauth",
+    "reviewed_paths": [
+     "db/users_db.py"
+    ],
+    "invariant": "Passwords are hashed with a memory-hard KDF and compared in constant time; session_version is incremented atomically on password change and sign-out-everywhere.",
+    "method": "source",
+    "result": "scrypt (N=2^14) with per-hash random salt (db/users_db.py:36-40); verify uses hmac.compare_digest (line 51). change_password (line 151) verifies current password, rejects unchanged, and UPDATEs password_hash with session_version=session_version+1 in one statement; bump_session_version (line 173) does the same for logout-everywhere. verify_login runs a dummy scrypt on unknown email to equalize timing and returns None for both bad-email and bad-password (lines 136-141), preventing enumeration.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h04-webauth",
+    "reviewed_paths": [
+     "core/throttle.py"
+    ],
+    "invariant": "Online credential-guessing is rate-limited per (IP,email) and per IP, and the limit is enforced before any password verification.",
+    "method": "source",
+    "result": "LoginThrottle (core/throttle.py) keeps two sliding-window buckets (5/15min per account, 20/15min per IP); retry_after is called in the login and change-password routes before verify_login/change_password, so a locked-out client learns nothing from the password. record_success clears only the (IP,email) bucket, not the per-IP spray budget. Memory bounded at 10k keys with expiry/oldest eviction. In-memory/per-process limitation is documented, not a cross-boundary failure.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h04-webauth",
+    "reviewed_paths": [
+     "core/config.py"
+    ],
+    "invariant": "Cookie transport/secret defaults fail safe: Secure defaults on, the shipped placeholder signing key is never trusted.",
+    "method": "source",
+    "result": "COOKIE_SECURE defaults true (core/config.py:68); APP_SECRET_KEY default is the placeholder 'change_me' (line 63) which core/auth._is_usable_secret rejects (placeholder set or <32 chars), falling back to a generated persisted random 48-byte urlsafe secret — so sessions are never signed with a public key. ALLOW_SIGNUP defaults false.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "x_hardening": [
+   "GET /api/settings (server/routes/settings.py:35) returns a dotted prefix plus the last 4 characters of each DECRYPTED secret (API keys, notify_smtp_password, notify_telegram_bot_token). Last-4 masking is industry-standard for high-entropy keys but is still cleartext secret material in a client-visible response; for user-chosen secrets like an SMTP password consider masking with no trailing cleartext.",
+   "POST /api/auth/logout (server/routes/auth.py:82) only clears the cookie and does not bump session_version, so a signed session token obtained out-of-band remains valid for its full 14-day max_age after the user logs out; change-password and logout-everywhere do revoke server-side. HttpOnly+Secure limit token capture, but bumping session_version on logout would give parity and true revocation.",
+   "WebSocket /ws/{job_id} (server/websocket.py:57) authenticates the session and enforces job ownership but performs no Origin allowlist check; cross-origin hijack is currently prevented only by the SameSite=Lax session cookie not being attached to cross-site WS handshakes, and the handler is read-only. An explicit Origin/Host check would add defense in depth independent of browser SameSite behavior.",
+   "The application has no CSRF token and no Origin/Referer validation on any route (server/app.py); CSRF protection relies solely on the explicit SameSite=Lax session cookie (core/auth.py:145). This is effective for the non-GET JSON/multipart mutations actually used, but it is a single layer — an anti-CSRF token or Origin check on state-changing routes would harden against future SameSite regressions or a route added with a Lax-permitted method.",
+   "The session throttle (core/throttle.py) is in-memory and per-process and the login IP is request.client.host; behind a reverse proxy without uvicorn --proxy-headers/--forwarded-allow-ips every client shares one bucket. This is documented in the module and is a deployment-config concern, not a source defect."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "server%2Froutes%2Fghostwriter.py%23%2Fapi%2Fghostwriter%2F%2A::db%2Fjobs_db.py%23JobsDB%28%29%20unscoped::server%2Froutes%2Fghostwriter.py%2Bintelligence%2Fghostwriter.py::AI-AND-LLM.md%23Excessive%20agency%20and%20confused-deputy%20authority",
+  "canonical_refs": {
+   "surface": "server/routes/ghostwriter.py#/api/ghostwriter/*",
+   "boundary": "db/jobs_db.py#JobsDB() unscoped",
+   "subsystem": "server/routes/ghostwriter.py+intelligence/ghostwriter.py",
+   "attack_class": "AI-AND-LLM.md#Excessive agency and confused-deputy authority"
+  },
+  "surface": "Ghostwriter routes",
+  "boundary": "Tenant + owner boundary for LLM actions",
+  "subsystem": "intelligence/ghostwriter",
+  "attack_class": "Excessive agency and confused-deputy authority",
+  "starting_paths": [
+   "server/routes/ghostwriter.py",
+   "intelligence/ghostwriter.py",
+   "db/jobs_db.py",
+   "core/llm.py"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+  "selected_companion_blocks": [
+   "AI-AND-LLM.md#Core discipline",
+   "AI-AND-LLM.md#Excessive agency and confused-deputy authority",
+   "AI-AND-LLM.md#Sensitive context extraction",
+   "AI-AND-LLM.md#Universal moves",
+   "AI-AND-LLM.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "h02-llm",
+  "reviewed_paths": [
+   "MULTI_USER_STATUS.md",
+   "core/auth.py",
+   "core/config.py",
+   "core/llm.py",
+   "db/jobs_db.py",
+   "db/profile_db.py",
+   "intelligence/ghostwriter.py",
+   "intelligence/prep.py",
+   "server/app.py",
+   "server/routes/answer_bank.py",
+   "server/routes/auth.py",
+   "server/routes/ghostwriter.py",
+   "server/routes/jobs.py",
+   "server/routes/kits.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h02-llm",
+    "reviewed_paths": [
+     "server/routes/ghostwriter.py",
+     "intelligence/ghostwriter.py",
+     "db/jobs_db.py",
+     "db/profile_db.py",
+     "server/app.py"
+    ],
+    "invariant": "A signed-in non-owner must not be able to read another user's job rows or the owner's global profile, or spend the owner's LLM key, through the /api/ghostwriter/* routes.",
+    "method": "local",
+    "result": "In a sandboxed TestClient there were two accounts (owner id 1, user 2, ALLOW_SIGNUP=true) and core.llm.chat was replaced by a local stub. User 2 called GET /api/ghostwriter/context/<owner job id> and got 200 with the owner's private job description marker, the owner's full_name and the owner's linkedin_url. With user 2's own job id, the same route still returned the owner's name and LinkedIn. POST /api/ghostwriter/chat/<owner job id> and POST /api/ghostwriter/cover-letter/<own job id> each returned 200 and called the LLM stub with a system prompt holding the owner's profile, and for the chat call also the owner's job description. For comparison, user 2 got 404 from GET /api/jobs/<owner job id> and 403 from POST /api/kits/<owner job id>/regenerate. An anonymous call to the ghostwriter route got 401. The owner job id was recomputed from the public URL as sha256('1:'+url)[:16] and matched.",
+    "artifact": "agents/h02-llm/artifacts/work/evidence/ghostwriter_cross_tenant.json"
+   },
+   {
+    "agent_id": "h02-llm",
+    "reviewed_paths": [
+     "server/routes/kits.py",
+     "server/routes/jobs.py",
+     "intelligence/prep.py",
+     "server/routes/answer_bank.py",
+     "core/auth.py"
+    ],
+    "invariant": "Similar LLM and job routes check both the user's scope and owner-only authority, so ghostwriter should match them.",
+    "method": "source",
+    "result": "kits.py and jobs.py use JobsDB(user_id=uid), and kits regenerate uses Depends(require_owner). prep.load_owner_profile and answer_bank._profile_for give the profile only to PROFILE_OWNER_ID. The ghostwriter routes declare no Depends at all. _get_job_and_profile uses an unscoped JobsDB() plus the global ProfileDB().summary(), so the only control is the global session gate.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h02-llm",
+    "reviewed_paths": [
+     "core/llm.py",
+     "MULTI_USER_STATUS.md",
+     "server/routes/auth.py",
+     "core/config.py"
+    ],
+    "invariant": "Execution identity and deployment conditions for the ghostwriter LLM calls.",
+    "method": "source",
+    "result": "core.llm.chat reads the single global provider config and key from SettingsDB, so every ghostwriter call runs on the owner's key. Reaching this needs a second account, which means ALLOW_SIGNUP=true (default false, core/config.py:75; enforced at server/routes/auth.py:44). MULTI_USER_STATUS.md:46-47 lists the ghostwriter routes as not yet migrated. The ghostwriter writes no durable state and has no tools, so the impact is disclosure plus LLM spend.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "server/routes/ghostwriter.py:_get_job_and_profile:unscoped-JobsDB-global-ProfileDB-no-owner-check"
+  ],
+  "unresolved": [],
+  "x_hardening": [
+   "Autonomy rule selection uses the site type detected from page HTML markers (applier/universal.py _site_type -> applier/site_type.py _EMBEDDED_ATS). A generic careers page whose HTML contains a string such as 'smartrecruiters.com' is therefore judged under the owner's SmartRecruiters rule and counted in that site type's ledger stats. Consider binding the autonomy site type to the URL host, or to the URL-only type that apply_mode already uses.",
+   "The autonomy min_score condition uses ai_score, which an LLM computes from the attacker-written job description. Treat it as a ranking signal, not an authorization gate, and keep the deterministic conditions (require_all_answers_known, max_per_day, the daily limit) on by default for '*' rules.",
+   "applier/form_analyzer.py analyze() sends up to 2000 characters of the whole non-empty _flat profile, including identity fields such as ethnicity, disability_status and date_of_birth, to the LLM for every form page. Sending only the profile keys that match extracted field labels would reduce what a manipulated analysis can place into fields.",
+   "applier/form_filler.py _fill_one radio branch builds f\"{sel}[value='{value}']\" from LLM output without CSS escaping. This is not a security boundary (it stays on the same page), but escaping with _css_escape_attr would avoid misclicks."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "server%2Froutes%2Fjobs.py%23DELETE%20%2Fapi%2Fjobs%3Bdb%2F%2A_db.py%23user_id%20scoping::db%2Fjobs_db.py%23JobsDB%28user_id%29::db::DATA-ISOLATION-AND-LIFECYCLE.md%23Missing%20tenant%20or%20owner%20enforcement",
+  "canonical_refs": {
+   "surface": "server/routes/jobs.py#DELETE /api/jobs;db/*_db.py#user_id scoping",
+   "boundary": "db/jobs_db.py#JobsDB(user_id)",
+   "subsystem": "db",
+   "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement"
+  },
+  "surface": "Multi-user data deletion, clear and per-user derived stores",
+  "boundary": "Tenant boundary in stores",
+  "subsystem": "db",
+  "attack_class": "Missing tenant or owner enforcement",
+  "starting_paths": [
+   "db",
+   "server/routes/kits.py",
+   "server/routes/prep.py",
+   "server/routes/follow_ups.py",
+   "server/routes/answer_bank.py",
+   "server/routes/analytics.py",
+   "server/routes/autonomy.py",
+   "server/routes/assist.py",
+   "server/routes/notifications.py"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+  "selected_companion_blocks": [
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Composite-key and namespace collision",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Analytics, logs, traces, and diagnostics as alternate readers",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Enumeration and aggregate oracles",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "h08-logic",
+  "reviewed_paths": [
+   "db/answer_bank_db.py",
+   "db/autonomy_db.py",
+   "db/follow_ups_db.py",
+   "db/jobs_db.py",
+   "db/kits_db.py",
+   "db/notifications_db.py",
+   "db/outcomes_db.py",
+   "db/prep_db.py",
+   "db/review_db.py",
+   "db/users_db.py",
+   "server/routes/analytics.py",
+   "server/routes/answer_bank.py",
+   "server/routes/apply.py",
+   "server/routes/autonomy.py",
+   "server/routes/follow_ups.py",
+   "server/routes/jobs.py",
+   "server/routes/kits.py",
+   "server/routes/notifications.py",
+   "server/routes/prep.py",
+   "tracking/pipeline.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h08-logic",
+    "reviewed_paths": [
+     "db/answer_bank_db.py",
+     "db/prep_db.py",
+     "db/kits_db.py",
+     "db/follow_ups_db.py",
+     "db/notifications_db.py",
+     "db/review_db.py",
+     "db/outcomes_db.py",
+     "db/autonomy_db.py",
+     "server/routes/answer_bank.py",
+     "server/routes/prep.py",
+     "server/routes/kits.py",
+     "server/routes/follow_ups.py",
+     "server/routes/analytics.py",
+     "server/routes/autonomy.py",
+     "server/routes/notifications.py"
+    ],
+    "invariant": "Every read, update, delete, list and count in the per-user stores binds user_id from the session (no unscoped view, no body-supplied identity) and unique keys include user_id.",
+    "method": "source",
+    "result": "AnswerBank refuses construction without an int user_id and every query has user_id=?; offers, prep artifacts, kits, follow-ups (joined on jobs.user_id), notification outbox, review packets, outcome stats and autonomy rules/ledger are all filtered by user_id with UNIQUE keys containing user_id. Routes build stores from Depends(get_current_user_id); LLM-spending and automation-changing routes are require_owner. No missing binding found.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h08-logic",
+    "reviewed_paths": [
+     "server/routes/jobs.py",
+     "db/jobs_db.py"
+    ],
+    "invariant": "DELETE /api/jobs and DELETE /api/jobs/duplicates remove only the caller's jobs and their child rows.",
+    "method": "source",
+    "result": "clear_all and purge_duplicates append the user_id filter to both the doomed-id subquery and the jobs delete; job_id is UNIQUE across the table, so child deletes by job_id IN (scoped ids) cannot touch another user's rows. Leftover job_notes/job_briefs/application_kits/autonomy_attempts are same-user orphans only (hardening).",
+    "artifact": null
+   },
+   {
+    "agent_id": "h08-logic",
+    "reviewed_paths": [
+     "db/jobs_db.py",
+     "tracking/pipeline.py",
+     "db/users_db.py"
+    ],
+    "invariant": "Legacy/unowned rows and user ids cannot be adopted by or reused for a non-owner.",
+    "method": "source",
+    "result": "The only job insert path is the owner-only pipeline using unscoped JobsDB() (user_id NULL); only JobsDB(user_id=1) adopts NULL rows; users.id is AUTOINCREMENT with no delete path, so ids are not reused. Non-owner accounts therefore have no production path to create jobs.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h08-logic",
+    "reviewed_paths": [
+     "server/routes/apply.py",
+     "db/jobs_db.py"
+    ],
+    "invariant": "Counts and timing derived from the owner's applications are not disclosed to a non-owner signed-in user.",
+    "method": "local",
+    "result": "Violated. With ALLOW_SIGNUP, non-owner bob (id 2) GET /api/apply/limits returned applied_today=2 and wait_seconds=44 reflecting the owner's two submissions, while bob's own /api/stats and /api/queue/status applied_today were 0 and bob got 404 for the owner's job.",
+    "artifact": "agents/h08-logic/artifacts/work/evidence/apply_limits_cross_user_count.json"
+   }
+  ],
+  "result_fingerprints": [
+   "server/routes/apply.py:get_limits:unscoped-JobsDB-cross-user-count"
+  ],
+  "unresolved": [],
+  "x_hardening": [
+   "dry_run is parsed inconsistently: applier/queue_worker.is_dry_run strips whitespace but applier/session.Orchestrator._dry_run_enabled and server/routes/apply._settings_dry_run do not, and POST /api/settings stores dry_run verbatim. A value such as 'true ' lifts the daily limit in the worker and autonomy while the Orchestrator really submits. Normalise dry_run to true/false on save (like quality_first) and parse it with one helper. Only the owner can write it, and the UI writes exact values.",
+   "server/routes/apply._enforce_rate_limits uses unscoped JobsDB(), so the owner's daily limit and min-delay count every user's applied_at rows. There is no production path for a non-owner to create jobs today (only the owner-only pipeline inserts), so this cannot be exploited now. If per-user job creation is ever added, a non-owner could exhaust the owner's submit limit. Scope it to the owner.",
+   "daily_apply_limit and min/max_delay_between_applies are not validated on POST /api/settings. A negative daily_apply_limit with quality_first off behaves as unlimited (cap > 0 check). Validate them as non-negative integers.",
+   "The /api/apply/submit cap and min-delay check is check-then-act. Parallel owner submits for different job ids (each takes only its own per-job lock) can all pass before any completes, and autonomy submits never check min_delay_between_applies. Owner-driven only.",
+   "POST /api/applications/{id}/transition (session-only) lets any user move their own job found->queued or ->preparing, which bypasses the owner-only queue route and the quality gate. The worker reads only the owner's queue and re-checks the gate before claiming, so nothing runs. Consider restricting user-initiated targets to the stages the UI needs.",
+   "JobsDB.clear_all leaves job_notes and job_briefs (default branch), plus application_kits, autonomy_attempts and runner_tasks (both branches), keyed by job_id. Re-scraping the same URL recreates the same unscoped job_id and reattaches the old notes, brief and kit for the same owner. Delete or tombstone them with the job."
+  ],
+  "x_uncovered": [],
+  "x_resolved_leads": [
+   "h01 uncovered lead GET /api/apply/limits settled by this unit (critic-w1 resolved_prior_leads)"
+  ]
+ },
+ {
+  "coverage_id": "server%2Froutes%2Fonboarding.py%23%2Fapi%2Fsetup%2Fupload-resume%2C%2Fapi%2Fprofile%2C%2Fapi%2Fsearch-prefs%2C%2Fapi%2Fstatus%3Bserver%2Froutes%2Fsettings.py%23GET%20%2Fapi%2Fsettings%2A::core%2Fauth.py%23require_owner::server%2Froutes::ATTACK-CLASSES.md%23Access%20control",
+  "canonical_refs": {
+   "surface": "server/routes/onboarding.py#/api/setup/upload-resume,/api/profile,/api/search-prefs,/api/status;server/routes/settings.py#GET /api/settings*",
+   "boundary": "core/auth.py#require_owner",
+   "subsystem": "server/routes",
+   "attack_class": "ATTACK-CLASSES.md#Access control"
+  },
+  "surface": "Session-gate-only routes touching machine-wide owner state (onboarding, settings reads)",
+  "boundary": "Owner boundary (require_owner)",
+  "subsystem": "server/routes",
+  "attack_class": "Access control",
+  "starting_paths": [
+   "server/routes/onboarding.py",
+   "server/routes/settings.py",
+   "core/auth.py",
+   "db/profile_db.py",
+   "db/settings_db.py"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+  "selected_companion_blocks": [
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "h01-owner-state",
+  "reviewed_paths": [
+   "MULTI_USER_STATUS.md",
+   "applier/form_filler.py",
+   "applier/pack.py",
+   "applier/session.py",
+   "applier/universal.py",
+   "core/auth.py",
+   "core/config.py",
+   "core/notifier.py",
+   "core/resume_parser.py",
+   "db/answer_bank_db.py",
+   "db/profile_db.py",
+   "db/settings_db.py",
+   "intelligence/prep.py",
+   "server/app.py",
+   "server/routes/answer_bank.py",
+   "server/routes/notifications.py",
+   "server/routes/onboarding.py",
+   "server/routes/settings.py",
+   "tests/test_http_auth.py",
+   "tracking/pipeline.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h01-owner-state",
+    "reviewed_paths": [
+     "server/routes/onboarding.py",
+     "core/auth.py",
+     "db/profile_db.py",
+     "server/app.py",
+     "core/config.py"
+    ],
+    "invariant": "Only the owner (require_owner, OWNER_USER_ID=1) can read or change the one machine-wide profile.db, resume.pdf and search preferences that drive the owner's applications",
+    "method": "local",
+    "result": "No route in onboarding.py takes require_owner. The global auth gate only checks for a valid session. In a two-user TestClient run (ALLOW_SIGNUP on for the second signup), user 2 got 200 on GET /api/profile/flat, which returned the owner's dummy email and phone. User 2's POST /api/profile changed the owner's email to attacker-dummy@example.com. User 2's POST /api/search-prefs replaced the owner's positions. User 2's POST /api/setup/upload-resume overwrote resume.pdf with their own bytes.",
+    "artifact": "agents/h01-owner-state/artifacts/work/evidence/owner_state_nonowner.json"
+   },
+   {
+    "agent_id": "h01-owner-state",
+    "reviewed_paths": [
+     "server/routes/settings.py",
+     "db/settings_db.py",
+     "server/routes/notifications.py",
+     "core/notifier.py"
+    ],
+    "invariant": "Notification channel settings, which notifications.py declares owner-only because the addresses are personal, cannot be read by a non-owner through another route",
+    "method": "local",
+    "result": "As user 2, GET /api/notifications/settings returned 403. But GET /api/settings returned notify_email_to and notify_telegram_chat_id unmasked, plus the last 4 characters of openai_api_key. GET /api/settings/raw/notify_email_to also returned the value with 200. Both routes read the same settings table without an owner check.",
+    "artifact": "agents/h01-owner-state/artifacts/work/evidence/owner_state_nonowner.json"
+   },
+   {
+    "agent_id": "h01-owner-state",
+    "reviewed_paths": [
+     "server/routes/answer_bank.py",
+     "applier/pack.py",
+     "intelligence/prep.py",
+     "db/answer_bank_db.py"
+    ],
+    "invariant": "The source states a policy that the global profile belongs only to PROFILE_OWNER_ID",
+    "method": "source",
+    "result": "answer_bank._profile_for, pack.owner_profile and prep.load_owner_profile all return None unless user_id == PROFILE_OWNER_ID. The answer_bank_db docstring says the profile belongs to the first account. So the intended policy is owner-only, and the onboarding routes break it.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h01-owner-state",
+    "reviewed_paths": [
+     "applier/session.py",
+     "applier/form_filler.py",
+     "applier/universal.py",
+     "tracking/pipeline.py",
+     "core/resume_parser.py"
+    ],
+    "invariant": "Data a non-owner writes does not reach the owner's real applications or the owner's LLM spend",
+    "method": "source",
+    "result": "Orchestrator uses ProfileDB() (session.py:154-156, 622-624) to fill the owner's forms. form_filler and universal upload cfg.RESUME_PATH when no variant is chosen. The pipeline reads search_positions and search_locations. upload_resume calls resume_parser.parse, which calls LLM.chat_json on the owner's configured key. So data a non-owner writes ends up in applications submitted in the owner's name.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h01-owner-state",
+    "reviewed_paths": [
+     "tests/test_http_auth.py",
+     "MULTI_USER_STATUS.md"
+    ],
+    "invariant": "Check whether non-owner settings reads and the global profile are an intended, documented design",
+    "method": "source",
+    "result": "test_settings_writes_are_owner_only_but_reads_are_not makes generic settings reads open to everyone on purpose (the providers list). MULTI_USER_STATUS.md lists the global profile and resume, and settings, as items that block ALLOW_SIGNUP=true. These are known gaps and only matter when signup is on; that is recorded as a condition. They are not a disproof.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "server/routes/onboarding.py:profile-resume-routes-missing-require-owner",
+   "server/routes/settings.py:settings-reads-expose-owner-notify-addresses"
+  ],
+  "unresolved": [],
+  "x_hardening": [
+   "DELETE /api/jobs (JobsDB.clear_all) and account deactivation leave data/sessions/<job_id>.json and data/screenshots/<job_id>_*.png on disk, and they stay reachable. Consider deleting derived copies together with the job.",
+   "Server-side screenshot names in applier/screenshotter.py:16 are {job_id}_{label}_{HHMMSS}.png (low entropy). Use random suffixes as applier/runner_hub.py:446-449 does.",
+   "GET /api/settings/login-status, GET /api/status and GET /api/setup/checklist show non-owners the owner's job-site login state, LLM provider, dry_run and profile completeness. This is low-sensitivity owner state with no owner check.",
+   "GET /api/settings masks secret keys but keeps the last 4 characters (server/routes/settings.py:35). This is owned by the peer crypto/secrets unit and noted here only as a variant."
+  ],
+  "x_uncovered": [
+   {
+    "surface": "GET /api/apply/limits uses unscoped JobsDB() and returns the global applied_today count and the time since the last application to any signed-in user",
+    "boundary": "Tenant boundary (JobsDB(user_id) scoping)",
+    "subsystem": "server/routes",
+    "attack_class": "Missing tenant or owner enforcement",
+    "starting_paths": [
+     "server/routes/apply.py",
+     "db/jobs_db.py"
+    ],
+    "reason": "This route is in apply.py but not in this unit's assigned routes, and no peer coverage ID names it. It is a low-impact cross-tenant aggregate disclosure that needs its own check."
+   }
+  ]
+ },
+ {
+  "coverage_id": "server%2Froutes%2Fonboarding.py%23POST%20%2Fapi%2Fsetup%2Fupload-resume%3Bserver%2Froutes%2Fkits.py%23resumes%3Bserver%2Froutes%2Frunner.py%23screenshot::db%2Fresumes_db.py%23store::db%2Fresumes_db.py%2Bserver%2Froutes%2Frunner.py::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+  "canonical_refs": {
+   "surface": "server/routes/onboarding.py#POST /api/setup/upload-resume;server/routes/kits.py#resumes;server/routes/runner.py#screenshot",
+   "boundary": "db/resumes_db.py#store",
+   "subsystem": "db/resumes_db.py+server/routes/runner.py",
+   "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+  },
+  "surface": "Uploads and stored files (resume upload, resume variants, runner screenshots)",
+  "boundary": "File handling and size limits",
+  "subsystem": "db+server/routes",
+  "attack_class": "Resource and file handling (uploads)",
+  "starting_paths": [
+   "server/routes/onboarding.py",
+   "db/resumes_db.py",
+   "server/routes/kits.py",
+   "server/routes/runner.py",
+   "applier/runner_hub.py",
+   "core/resume_parser.py"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+  "selected_companion_blocks": [
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Decompression and representation amplification",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [
+   {
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "h03-files",
+    "reviewed_paths": [
+     "applier/runner_hub.py",
+     "core/resume_parser.py",
+     "db/resumes_db.py",
+     "server/routes/kits.py",
+     "server/routes/onboarding.py",
+     "server/routes/runner.py",
+     "server/static_shell.py"
+    ],
+    "local_checks": [
+     {
+      "agent_id": "h03-files",
+      "reviewed_paths": [
+       "server/routes/runner.py",
+       "server/routes/kits.py",
+       "server/static_shell.py",
+       "applier/runner_hub.py"
+      ],
+      "invariant": "The 3 MB runner-screenshot cap and the 5 MB resume cap bound what the server accepts and stores, and an unauthenticated request does no body work before require_runner rejects it",
+      "method": "local",
+      "result": "FastAPI 0.162 / Starlette 1.7 parse the whole multipart body before resolving dependencies, and Starlette applies no size limit to file parts. Anonymous POSTs of 8 MiB to /api/runner/<32 hex>/screenshot (chunked, and again with a declared Content-Length) each spooled 8,388,616 bytes to a disk-backed temp file and only then got 401 from require_runner. Control: anonymous /api/resumes was stopped by the gate with 0 bytes spooled. A signed-in /api/resumes chunked 8 MiB upload spooled 8,388,617 bytes before its 413. The route-level Content-Length checks run after the body has already been received.",
+      "artifact": "agents/h03-files/artifacts/work/evidence/h1_spool.json"
+     },
+     {
+      "agent_id": "h03-files",
+      "reviewed_paths": [
+       "server/routes/onboarding.py",
+       "core/resume_parser.py",
+       "server/routes/kits.py"
+      ],
+      "invariant": "Resume upload is size-bounded and its PDF and LLM work runs off the shared event loop, as the sibling /api/resumes route does",
+      "method": "local",
+      "result": "A non-owner signed-in user (id 2, ALLOW_SIGNUP=true) uploaded a 12 MiB file named x.pdf to /api/setup/upload-resume. It returned 200 and 12,582,921 bytes were written to cfg.RESUME_PATH. The extraction step ran with an asyncio loop running in its thread (true). With extraction held for 2 s by a stub, the owner's concurrent GET /api/auth/me took 5.05 s. The same stub in /api/resumes (asyncio.to_thread) ran off the loop and the concurrent request took 0.0 s.",
+      "artifact": "agents/h03-files/artifacts/work/evidence/h2_upload_resume.json"
+     },
+     {
+      "agent_id": "h03-files",
+      "reviewed_paths": [
+       "db/resumes_db.py",
+       "server/routes/kits.py"
+      ],
+      "invariant": "Resume variants are stored under server-chosen names inside the user's directory, size- and signature-checked, encrypted, and written atomically",
+      "method": "source",
+      "result": "check_pdf enforces non-empty, at most 5 MB and the %PDF- signature. The directory is data/resumes/<int uid>. The stored name is uuid4().hex + .pdf.enc. The file is written as .part and moved with os.replace, and is removed if the DB insert fails. There are at most 10 variants per user. The display filename goes through safe_filename (basename, [A-Za-z0-9._ -], .pdf, 100 characters). read() refuses plaintext and undecryptable files. materialize() uses mkdtemp, mode 0700 and O_CREAT|O_EXCL 0600, and runs rmtree in finally. No traversal or TOCTOU was found.",
+      "artifact": null
+     },
+     {
+      "agent_id": "h03-files",
+      "reviewed_paths": [
+       "applier/runner_hub.py",
+       "server/routes/runner.py",
+       "db/resumes_db.py"
+      ],
+      "invariant": "Runner screenshot and resume download handling cannot name, read or show arbitrary files",
+      "method": "source",
+      "result": "The screenshot file name is built on the server from the job_id (alphanumerics), a label cleaned to [a-z0-9_] (24 characters) and token_hex(4), written as .part and then replaced. validate_png checks the signature, IHDR and dimensions without decoding pixels. There are at most MAX_SCREENSHOTS_PER_TASK screenshots per task, and results can only cite this task's screenshots. The resume download's Content-Disposition filename comes from safe_filename (no quotes or CRLF possible).",
+      "artifact": null
+     },
+     {
+      "agent_id": "h03-files",
+      "reviewed_paths": [
+       "db/resumes_db.py",
+       "core/resume_parser.py"
+      ],
+      "invariant": "PDF text extraction is bounded after decompression, not only by the compressed upload size",
+      "method": "source",
+      "result": "extract_text caps pages (4) and output characters (6000) but not decompressed stream size. resume_parser._extract_text caps neither pages nor bytes. The installed pdfminer.six pdftypes.py calls zlib.decompress with no max length. Not locally validated. Recorded as unresolved.",
+      "artifact": null
+     }
+    ],
+    "result_fingerprints": [
+     "server/routes/runner.py:screenshot+server/routes/kits.py:upload_resume:multipart-spooled-before-auth-and-size-check",
+     "server/routes/onboarding.py:upload_resume:unbounded-upload-sync-parse-on-event-loop"
+    ],
+    "unresolved": [
+     "The peak memory of pdfminer FlateDecode expansion inside db/resumes_db.py extract_text (5 MB compressed cap) and core/resume_parser.py _extract_text (no cap) was not locally measured. The owner should measure peak RSS of extract_text on a benign, highly compressible one-page PDF under a strict memory limit."
+    ],
+    "reassignment_reason": "critic-w1: unit left an unresolved decompressed-size question (pdfminer FlateDecode expansion in db/resumes_db.extract_text and core/resume_parser._extract_text) that must be settled by a fresh pass"
+   }
+  ],
+  "wave": 2,
+  "status": "candidate",
+  "agent_id": "h13-uploads",
+  "reviewed_paths": [
+   "applier/runner_hub.py",
+   "core/resume_parser.py",
+   "db/resumes_db.py",
+   "db/runner_db.py",
+   "server/routes/kits.py",
+   "server/routes/onboarding.py",
+   "server/routes/runner.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h13-uploads",
+    "reviewed_paths": [
+     "server/routes/kits.py",
+     "db/resumes_db.py"
+    ],
+    "invariant": "POST /api/resumes caps the transfer size, checks the PDF signature, limits variant count and label/tag size, and never uses the client file name for storage paths",
+    "method": "source",
+    "result": "Content-Length is checked against MAX_BYTES+64KiB, file.read(MAX_BYTES+1) plus check_pdf enforce 5 MB and the %PDF- signature, there are at most 10 variants per user, and labels and tags are length-capped. The stored name is uuid4().hex+'.pdf.enc' under data/resumes/<int uid>, and safe_filename only feeds the metadata and the temp file name in a 0700 mkdtemp dir opened O_EXCL. No path traversal. The 5 MB cap applies only to the compressed transfer, not to what the parser expands.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h13-uploads",
+    "reviewed_paths": [
+     "db/resumes_db.py",
+     "core/resume_parser.py"
+    ],
+    "invariant": "PDF text extraction bounds work after stream decoding, not just the transfer size",
+    "method": "source",
+    "result": "db/resumes_db.extract_text applies TEXT_PAGES=4 and TEXT_CHARS=6000 only after pdfplumber has fully decoded and laid out each page. pdfminer's FlateDecode uses zlib.decompress with no output bound. core/resume_parser._extract_text walks every page with no page, char or decoded-size cap. MemoryError is a subclass of Exception, so both functions swallow it. There is no source-visible limit on the expansion ratio.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h13-uploads",
+    "reviewed_paths": [
+     "server/routes/onboarding.py",
+     "core/resume_parser.py"
+    ],
+    "invariant": "POST /api/setup/upload-resume bounds the upload, validates the content and writes the global resume atomically",
+    "method": "source",
+    "result": "The only check is a .pdf filename suffix. shutil.copyfileobj copies the whole upload, uncapped, straight into cfg.RESUME_PATH, in place and without a temp file and rename. The parse then runs synchronously on the event loop. This re-establishes the already-proposed fingerprint for the uncapped upload and parse. The non-atomic overwrite is recorded under hardening.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h13-uploads",
+    "reviewed_paths": [
+     "server/routes/runner.py",
+     "applier/runner_hub.py",
+     "db/runner_db.py"
+    ],
+    "invariant": "Runner screenshot upload is bounded, server-named, and limited per task",
+    "method": "source",
+    "result": "validate_png enforces 3 MB, the PNG signature, the IHDR chunk and MAX_DIMENSION. The name comes from the sanitised job id, a label reduced to [a-z0-9_]{0,24} and token_hex(4), written to a .part file and then replaced into place, so no traversal. The MAX_SCREENSHOTS_PER_TASK=20 check reads the task before add_screenshot does its read-modify-write, so concurrent requests from the same token can go past 20. That is bounded by the token holder's own concurrency and is recorded as hardening. Multipart spooling before auth is the already-proposed fingerprint.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "server/routes/onboarding.py:upload_resume:unbounded-upload-sync-parse-on-event-loop",
+   "server/routes/runner.py:screenshot+server/routes/kits.py:upload_resume:multipart-spooled-before-auth-and-size-check",
+   "db/resumes_db.py:extract_text+core/resume_parser.py:_extract_text:unbounded-pdf-stream-decompression"
+  ],
+  "unresolved": [],
+  "x_hardening": [
+   "server/routes/onboarding.py upload_resume overwrites cfg.RESUME_PATH in place (open 'wb' then copyfileobj) with no temp-file-and-rename and no %PDF- signature check. A failed or concurrent upload leaves a truncated or non-PDF global resume that the appliers then read. Write to a .part file, validate it, then os.replace.",
+   "applier/runner_hub.py screenshot checks len(task['screenshots']) >= 20 before db/runner_db.add_screenshot does an unlocked read-modify-write of the JSON list, so concurrent uploads from one token can store more than 20 files and lose list entries (orphaned files on disk). Do the count check and the append in one BEGIN IMMEDIATE transaction.",
+   "core/resume_parser._extract_text has no page or character cap of its own, while db/resumes_db.extract_text has one. Apply TEXT_PAGES/TEXT_CHARS-style limits there too, and stop iterating once enough text is collected."
+  ],
+  "x_uncovered": []
+ },
+ {
+  "coverage_id": "server%2Froutes%2Frunner.py%23%2Fapi%2Frunner%2F%2A::core%2Frunner_auth.py%23require_runner::server%2Froutes%2Frunner.py%2Bapplier%2Frunner_hub.py%2Bdb%2Frunner_db.py::WEB-PROTOCOL-AND-AUTH.md%23API-key%20scope%20and%20resource%20binding",
+  "canonical_refs": {
+   "surface": "server/routes/runner.py#/api/runner/*",
+   "boundary": "core/runner_auth.py#require_runner",
+   "subsystem": "server/routes/runner.py+applier/runner_hub.py+db/runner_db.py",
+   "attack_class": "WEB-PROTOCOL-AND-AUTH.md#API-key scope and resource binding"
+  },
+  "surface": "Runner protocol endpoints",
+  "boundary": "Runner bearer-token boundary",
+  "subsystem": "runner protocol (server side)",
+  "attack_class": "API-key scope and resource binding",
+  "starting_paths": [
+   "server/routes/runner.py",
+   "server/routes/runner_tokens.py",
+   "core/runner_auth.py",
+   "applier/runner_hub.py",
+   "db/runner_db.py",
+   "server/static_shell.py"
+  ],
+  "ordinary_attack_class_block": null,
+  "selected_companion_blocks": [
+   "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+   "WEB-PROTOCOL-AND-AUTH.md#API-key scope and resource binding",
+   "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+   "WEB-PROTOCOL-AND-AUTH.md#Validation rules",
+   "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+   "PROTOCOLS-RPC-AND-MESSAGING.md#Per-item and streaming authorization gaps",
+   "PROTOCOLS-RPC-AND-MESSAGING.md#Duplicate delivery and idempotency gaps",
+   "PROTOCOLS-RPC-AND-MESSAGING.md#Out-of-order and stale message acceptance",
+   "PROTOCOLS-RPC-AND-MESSAGING.md#Universal moves",
+   "PROTOCOLS-RPC-AND-MESSAGING.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "no native/memory-unsafe code in the repository"
+   },
+   {
+    "block": "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+    "reason": "no IaC, containers or cloud configuration in source"
+   },
+   {
+    "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+    "reason": "no CI, release, signing or plugin loading; pinning reviewed under Obvious things"
+   },
+   {
+    "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+    "reason": "no IPC, deep links, webviews or privileged helpers; runner is an HTTP CLI client"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "h05-runner",
+  "reviewed_paths": [
+   "applier/runner_hub.py",
+   "core/runner_auth.py",
+   "db/runner_db.py",
+   "db/users_db.py",
+   "server/routes/runner.py",
+   "server/routes/runner_tokens.py",
+   "server/static_shell.py"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "h05-runner",
+    "reviewed_paths": [
+     "core/runner_auth.py",
+     "db/runner_db.py",
+     "server/routes/runner.py",
+     "db/users_db.py"
+    ],
+    "invariant": "A runner bearer token is checked (prefix, length, SHA-256 lookup, not revoked, user active) and binds the request to exactly that token's user_id and token_id",
+    "method": "source",
+    "result": "parse_bearer accepts only 'Bearer <tok>'. authenticate looks up hash_token(raw) by exact match, refuses a revoked token or an inactive user (users_db.get_by_id filters is_active=1), and returns the stored user_id and token_id. Every RunnerHub, RunnerTaskStore and RunnerTokenStore query is scoped by that user_id. require_runner reads only the Authorization header, so a session cookie does not authenticate there and a bearer token does not authenticate elsewhere. The one gap is that this check runs once per request (see the claim check).",
+    "artifact": null
+   },
+   {
+    "agent_id": "h05-runner",
+    "reviewed_paths": [
+     "server/routes/runner_tokens.py",
+     "db/runner_db.py"
+    ],
+    "invariant": "Only the owner can mint, list or revoke runner tokens. Revocation is scoped to the caller's own tokens. The cap of 10 live tokens holds.",
+    "method": "source",
+    "result": "All three token routes depend on require_owner. RunnerTokenStore.revoke and list filter by user_id. create counts live tokens before inserting. A non-owner cannot obtain a token, so every token acts as user 1.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h05-runner",
+    "reviewed_paths": [
+     "server/static_shell.py",
+     "server/routes/runner.py"
+    ],
+    "invariant": "The session-gate bypass covers only the 5 runner endpoints, and no other handler can match those paths",
+    "method": "source",
+    "result": "RUNNER_PATH is fullmatched against /api/runner/(claim|<32 hex>/(events|screenshot|result|resume)). No other router declares an /api/{param} or :path route that could match these paths. Token management lives under /api/settings, behind the session gate.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h05-runner",
+    "reviewed_paths": [
+     "applier/runner_hub.py",
+     "db/runner_db.py"
+    ],
+    "invariant": "Per-task binding: events, screenshot, result and resume act only on a task currently claimed by the same token. A duplicate or stale result is refused.",
+    "method": "source",
+    "result": "_claimed uses get_claimed (status=claimed AND claimed_by=token_id AND user_id). complete() is a conditional UPDATE, so a repeated or late result after a requeue gets a 409. sweep() never re-queues a claimed submit (lost_submit leads to needs_you). A screenshot path is generated by the server, and clean_result uses only the task's own stored screenshots.",
+    "artifact": null
+   },
+   {
+    "agent_id": "h05-runner",
+    "reviewed_paths": [
+     "applier/runner_hub.py",
+     "server/routes/runner.py",
+     "db/runner_db.py",
+     "server/routes/runner_tokens.py"
+    ],
+    "invariant": "The claim long poll is bounded to 25 s, and a revoked token stops receiving work at once (the docstring says 'revoked, which stops it at once')",
+    "method": "local",
+    "result": "Failed. The body {\"wait\":\"nan\"} passes float(), and the min/max clamp keeps NaN, so the deadline and remaining time are both NaN. 'remaining <= 0' is never true and Condition.wait(nan) returns immediately. The poll spun for 28 s with 84958 sweep() calls, each opening a BEGIN IMMEDIATE transaction, while holding the token's polling slot (a second poll got 429). After the owner revoked the token, fresh requests got 401, but the open poll stayed alive. When an application was queued later, it claimed the task under the revoked token id and returned HTTP 200 with the full payload (profile, answers, kit, resume metadata).",
+    "artifact": "agents/h05-runner/artifacts/work/evidence/runner_claim_nan_revoked.json"
+   }
+  ],
+  "result_fingerprints": [
+   "applier/runner_hub.py:RunnerHub.claim:nan-wait-unbounded-long-poll-survives-token-revocation"
+  ],
+  "unresolved": [],
+  "x_hardening": [
+   "Changing the password or bumping session_version (db/users_db.py change_password) revokes browser sessions but not runner tokens. Consider revoking or flagging runner tokens on password change.",
+   "RunnerTokenStore.revoke does not release tasks claimed by the revoked token. They stay claimed until the 120 s lease lapses, and a submit task then becomes lost_submit (needs_you).",
+   "clean_result always sets the dry_run key, so Orchestrator.finish_pass lets the runner's reported dry_run=false override a submit task created with dry_run=true. The job is then recorded as submitted and counted against the daily limit. The server should not let a result turn a dry-run task into a real submission.",
+   "No owner action (skip or transition) cancels a claimed runner task, and finish_pass does not re-check the job stage before running the finishers. A runner's heartbeats keep getting 200 after the owner skips the application, so the runner never gets the 404/409 'drop it' signal it supports, and its result is still processed.",
+   "Check-then-act on MAX_SCREENSHOTS_PER_TASK and MAX_EVENTS_PER_TASK, and add_screenshot's read-modify-write of the JSON list without BEGIN IMMEDIATE, allow concurrent uploads to exceed the cap and lose list entries, leaving untracked files. Belongs to the peer unit for runner screenshot resource handling.",
+   "The runner client does not check the format of server-supplied job_id and task_id (job_id becomes part of a local screenshot path via applier/screenshotter.py), and it does not re-check that application.url is http(s). Validating hex ids and the scheme client-side would add defence in depth.",
+   "The runner only warns when --server is plain http on a non-loopback host, so the bearer token travels unencrypted."
+  ],
+  "x_uncovered": []
+ }
+]

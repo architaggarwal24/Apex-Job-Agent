@@ -66,6 +66,50 @@ STANDARD_FIELDS = [
     ("resume_summary",       "", "meta",          "textarea", "Resume summary/objective"),
 ]
 
+# first_name / last_name are kept for form filling but never edited directly:
+# the Profile page asks for the full name once and the halves come from it.
+DERIVED_NAME_FIELDS = ("first_name", "last_name")
+
+
+def split_full_name(full_name: str) -> tuple[str, str]:
+    """"Archit Aggarwal" -> ("Archit", "Aggarwal"); a single word is all first name."""
+    parts = (full_name or "").split()
+    return (parts[0] if parts else ""), (" ".join(parts[1:]) if len(parts) > 1 else "")
+
+
+# Profile links where only the user name varies: the page asks for that part and
+# the stored value is always the canonical URL, whatever shape was typed or parsed.
+PROFILE_URL_PREFIX = {
+    "github_url":   "https://github.com/",
+    "linkedin_url": "https://www.linkedin.com/in/",
+}
+_PROFILE_URL_HOSTS = {
+    "github_url":   ("github.com/",),
+    "linkedin_url": ("linkedin.com/in/", "linkedin.com/pub/"),
+}
+
+
+def profile_url_username(key: str, value: str) -> str:
+    """The user-name part of a GitHub / LinkedIn value: a full URL (any scheme,
+    with or without www), a bare "github.com/x" or just "x" all give "x"."""
+    v = (value or "").strip()
+    if not v:
+        return ""
+    low = v.lower()
+    for host in _PROFILE_URL_HOSTS.get(key, ()):
+        i = low.find(host)
+        if i >= 0:
+            v = v[i + len(host):]
+            break
+    return v.strip("/").split("/")[0].split("?")[0].strip().lstrip("@")
+
+
+def canonical_profile_url(key: str, value: str) -> str:
+    """Canonical URL for the stored value of a prefixed link ("" stays "")."""
+    user = profile_url_username(key, value)
+    return PROFILE_URL_PREFIX[key] + user if user else ""
+
+
 # Fields that the per-job "correction" flow (free-text note on the
 # review screen, interpreted by the LLM) is allowed to modify.
 #
@@ -285,6 +329,11 @@ class ProfileDB:
         for k in direct:
             if parsed.get(k):
                 mapping[k] = str(parsed[k])
+        for k in PROFILE_URL_PREFIX:
+            if mapping.get(k):
+                mapping[k] = canonical_profile_url(k, mapping[k])
+        if mapping.get("full_name"):
+            mapping["first_name"], mapping["last_name"] = split_full_name(mapping["full_name"])
         if parsed.get("experience_years"):
             mapping["experience_years"] = str(parsed["experience_years"])
         if parsed.get("summary"):

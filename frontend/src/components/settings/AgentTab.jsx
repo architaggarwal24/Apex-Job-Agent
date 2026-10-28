@@ -30,7 +30,7 @@ export default function AgentTab({ val, setVal }) {
         <NumberField label="Min Delay Between Applies (s)" k="min_delay_between_applies" val={val} setVal={setVal} />
         <NumberField label="Max Delay Between Applies (s)" k="max_delay_between_applies" val={val} setVal={setVal} />
       </div>
-      <div className="m" style={{ marginTop: 6 }}>The daily limit, score threshold, company blacklist and minimum salary are under Settings → Automation.</div>
+      <div className="m" style={{ marginTop: 6 }}>The daily limit, score threshold, company blacklist and minimum salary are under Applying → Limits &amp; filters.</div>
     </div>
   )
 }

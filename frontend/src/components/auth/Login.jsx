@@ -5,7 +5,15 @@
 // same app — rather than a standalone login.html — is the whole point
 // of "one frontend": there's exactly one place this UI is defined.
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { motion } from 'motion/react'
+import { ArrowRight } from 'lucide-react'
+import LogoMark from '@/components/layout/LogoMark'
+import { EASE } from '@/lib/motion'
+
+// The flow the agent runs, shown as the one moving thing on the page: the lit step
+// walks along once, then rests on "you review".
+const FLOW = ['search', 'score', 'fill', 'you review', 'submit']
 
 export default function Login({ onAuthed, signupOpen }) {
   const [mode, setMode] = useState('login')
@@ -13,6 +21,12 @@ export default function Login({ onAuthed, signupOpen }) {
   const [pw, setPw] = useState('')
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  const [lit, setLit] = useState(0)
+  useEffect(() => {
+    if (lit >= 3) return undefined
+    const t = setTimeout(() => setLit(l => l + 1), 700)
+    return () => clearTimeout(t)
+  }, [lit])
 
   const submit = async () => {
     if (!email || !pw) { setMsg('Enter your email and password'); return }
@@ -31,42 +45,59 @@ export default function Login({ onAuthed, signupOpen }) {
 
   return (
     <div className="login-shell">
-      <div className="card login-card">
-        <div className="logo" style={{ marginBottom: 6 }}>⚡ Apex</div>
-        <p className="sub" style={{ marginBottom: 22 }}>
-          {mode === 'signup' ? 'Create your account' : 'Sign in to your account'}
-        </p>
-
-        <div className="fg">
-          <label>Email</label>
-          <input className="in" type="email" autoFocus value={email}
-            onChange={e => setEmail(e.target.value)} />
-        </div>
-        <div className="fg">
-          <label>Password</label>
-          <input className="in" type="password" value={pw}
-            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-            onChange={e => setPw(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && submit()} />
-          {mode === 'signup' && <div className="m" style={{ marginTop: 6 }}>At least 8 characters.</div>}
-        </div>
-
-        {msg && <div className="fg" style={{ color: 'var(--red)', fontSize: 13 }}>{msg}</div>}
-
-        <button className="btn primary" style={{ width: '100%' }}
-          disabled={busy} onClick={submit}>
-          {busy ? '…' : mode === 'signup' ? 'Create account' : 'Sign in'}
-        </button>
-
-        {signupOpen && (
-          <div className="m" style={{ textAlign: 'center', marginTop: 18 }}>
-            {mode === 'signup' ? (
-              <>Already have an account? <button className="link-btn" onClick={() => { setMode('login'); setMsg('') }}>Sign in</button></>
-            ) : (
-              <>No account? <button className="link-btn" onClick={() => { setMode('signup'); setMsg('') }}>Create one</button></>
-            )}
+      <section className="login-side" aria-label="About Apex">
+        <div className="logo"><LogoMark /><span>Apex<small>Job agent</small></span></div>
+        <div>
+          <h1>Your job search, run for you. Nothing sent without you.</h1>
+          <p className="lead">Apex finds postings, scores them against your profile, fills the forms and stops for your review before anything goes out.</p>
+          <div className="login-flow" aria-hidden="true">
+            {FLOW.map((s, i) => (
+              <span key={s} className="row" style={{ gap: '.5rem' }}>
+                <motion.span className={`st ${lit === i ? 'live' : ''}`} animate={{ scale: lit === i ? 1.04 : 1 }} transition={{ duration: 0.3, ease: EASE }}>{s}</motion.span>
+                {i < FLOW.length - 1 && <ArrowRight className="lucide arr" />}
+              </span>))}
           </div>
-        )}
+        </div>
+        <p className="m">Runs on your machine. Your resume, answers and site logins stay here.</p>
+      </section>
+
+      <div className="login-main">
+        <motion.div className="card login-card" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: EASE }}>
+          <h2>{mode === 'signup' ? 'Create your account' : 'Welcome back'}</h2>
+          <p className="sub" style={{ marginBottom: 'var(--sp3)' }}>
+            {mode === 'signup' ? 'The first account becomes the owner.' : 'Sign in to pick up where you left off.'}
+          </p>
+
+          <div className="fg">
+            <label htmlFor="login-email">Email</label>
+            <input id="login-email" className="in" type="email" autoFocus value={email}
+              onChange={e => setEmail(e.target.value)} />
+          </div>
+          <div className="fg">
+            <label htmlFor="login-pw">Password</label>
+            <input id="login-pw" className="in" type="password" value={pw}
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              onChange={e => setPw(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submit()} />
+            {mode === 'signup' && <div className="hint">At least 8 characters.</div>}
+          </div>
+
+          {msg && <div className="fg msg-err" role="alert" style={{ fontSize: '.8125rem' }}>{msg}</div>}
+
+          <button className="btn primary" style={{ width: '100%' }} disabled={busy} onClick={submit}>
+            {busy ? 'Signing in…' : mode === 'signup' ? 'Create account' : 'Sign in'}
+          </button>
+
+          {signupOpen && (
+            <div className="m" style={{ textAlign: 'center', marginTop: 'var(--sp3)' }}>
+              {mode === 'signup' ? (
+                <>Already have an account? <button className="link-btn" onClick={() => { setMode('login'); setMsg('') }}>Sign in</button></>
+              ) : (
+                <>No account? <button className="link-btn" onClick={() => { setMode('signup'); setMsg('') }}>Create one</button></>
+              )}
+            </div>
+          )}
+        </motion.div>
       </div>
     </div>
   )
